@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"sort"
 
-	"github.com/ugorji/go/codec"
+	"github.com/WICG/webpackage/go/signedexchange/cbor"
 )
 
 type ResponseHeader struct {
@@ -43,23 +43,49 @@ type requestE struct {
 	Url       []byte
 }
 
-type exchangeE struct {
-	_struct bool `codec:",toarray"`
-
-	RequestTag    []byte
-	Request       *requestE
-	ResponseTag   []byte
-	ResponseArray [][]byte
-	PayloadTag    []byte
-	Payload       []byte
+func encodeRequest(e cbor.Encoder, i *Input) error {
+	mes := []cbor.MapEntryEncoder{
+		GenerateMapEntry(func(keyE Encoder, valueE Encoder) {
+			keyE.EncodeByteString([]byte(":method"))
+			valueE.EncodeByteString([]byte("GET"))
+		}),
+		GenerateMapEntry(func(keyE Encoder, valueE Encoder) {
+			keyE.EncodeByteString([]byte(":method"))
+			valueE.EncodeByteString([]byte("GET"))
+		}),
+	}
+	sort.Sort(cbor.MapEntryEncoderSorter(mes))
 }
 
 func WriteExchange(w io.Writer, i *Input) error {
 	sort.Sort(headersSorter(i.ResponseHeaders))
 
 	statusStr := fmt.Sprintf("%03d", i.ResponseStatus)
+
+	e := &cbor.Encoder{w}
+	if err := e.EncodeArrayHeader(6); err != nil {
+		return fmt.Errorf("Failed to encode top-level array header: %v", err)
+	}
+	if err := e.EncodeTextString("request"); err != nil {
+		return fmt.Errorf("Failed to encode top-level array item \"request\": %v", err)
+	}
+	if err := encodeRequest(e, i); err != nil {
+		return err
+	}
+	if err := e.EncodeTextString("response"); err != nil {
+		return fmt.Errorf("Failed to encode top-level array item \"request\": %v", err)
+	}
+	if err := encodeResponseHeader(w, i); err != nil {
+		return err
+	}
+	if err := e.EncodeTextString("payload"); err != nil {
+		return fmt.Errorf("Failed to encode top-level array item \"request\": %v", err)
+	}
+	if err := e.EncodeByteString(i.Payload); err != nil {
+		return fmt.Errorf("Failed to encode payload: %v", err)
+	}
+
 	respary := [][]byte{
-		[]byte(":status"),
 		[]byte(statusStr),
 	}
 	for _, rh := range i.ResponseHeaders {
@@ -67,20 +93,13 @@ func WriteExchange(w io.Writer, i *Input) error {
 	}
 
 	exc := &exchangeE{
-		RequestTag: []byte("request"),
 		Request: &requestE{
 			MethodTag: []byte(":method"),
 			Method:    []byte("GET"),
 			UrlTag:    []byte(":url"),
 			Url:       []byte(i.RequestUri.String()),
 		},
-		ResponseTag:   []byte("response"),
 		ResponseArray: respary,
-		PayloadTag:    []byte("payload"),
-		Payload:       i.Payload,
 	}
-
-	h := new(codec.CborHandle)
-	enc := codec.NewEncoder(w, h)
-	return enc.Encode(exc)
+	return nil
 }

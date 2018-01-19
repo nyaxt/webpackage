@@ -13,7 +13,7 @@ var (
 )
 
 type Encoder struct {
-	w io.Writer
+	W io.Writer
 }
 
 func (e *Encoder) encodeTypedUInt(t Type, n uint64) error {
@@ -56,7 +56,7 @@ func (e *Encoder) encodeTypedUInt(t Type, n uint64) error {
 		n >>= 8
 	}
 
-	if _, err := e.w.Write(encoded); err != nil {
+	if _, err := e.W.Write(encoded); err != nil {
 		return err
 	}
 	return nil
@@ -87,7 +87,7 @@ func (e Encoder) encodeBytes(t Type, bs []byte) error {
 		return err
 	}
 
-	_, err := e.w.Write(bs)
+	_, err := e.W.Write(bs)
 	if err != nil {
 		return err
 	}
@@ -150,6 +150,27 @@ func (e Encoder) EncodeArrayHeader(n int) error {
 	return e.encodeTypedUInt(TypeArray, uint64(n))
 }
 
+func (e Encoder) EncodeMapHeader(n int) error {
+	/*
+	  Major type 5:  a map of pairs of data items.  Maps are also called
+	      tables, dictionaries, hashes, or objects (in JSON).  A map is
+	      comprised of pairs of data items, each pair consisting of a key
+	      that is immediately followed by a value.  The map's length follows
+	      the rules for byte strings (major type 2), except that the length
+	      denotes the number of pairs, not the length in bytes that the map
+	      takes up.  For example, a map that contains 9 pairs would have an
+	      initial byte of 0b101_01001 (major type of 5, additional
+	      information of 9 for the number of pairs) followed by the 18
+	      remaining items.  The first item is the first key, the second item
+	      is the first value, the third item is the second key, and so on.
+	      A map that has duplicate keys may be well-formed, but it is not
+	      valid, and thus it causes indeterminate decoding; see also
+	      Section 3.7.
+	*/
+
+	return e.encodeTypedUInt(TypeMap, uint64(n))
+}
+
 func (e Encoder) EncodeBool(b bool) error {
 	var ai byte
 	switch b {
@@ -162,7 +183,7 @@ func (e Encoder) EncodeBool(b bool) error {
 	}
 
 	bs := []byte{byte(TypeOther) | ai}
-	if _, err := e.w.Write(bs); err != nil {
+	if _, err := e.W.Write(bs); err != nil {
 		return err
 	}
 	return nil
@@ -202,14 +223,14 @@ func (s MapEntryEncoderSorter) Less(i, j int) bool {
 func (s MapEntryEncoderSorter) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 
 func (e *Encoder) EncodeMap(mes []*MapEntryEncoder) error {
-	if err := e.encodeTypedUInt(TypeMap, uint64(len(mes))); err != nil {
+	if err := e.EncodeMapHeader(len(mes)); err != nil {
 		return err
 	}
 	for _, me := range mes {
-		if _, err := io.Copy(e.w, &me.keyBuf); err != nil {
+		if _, err := io.Copy(e.W, &me.keyBuf); err != nil {
 			return err
 		}
-		if _, err := io.Copy(e.w, &me.valueBuf); err != nil {
+		if _, err := io.Copy(e.W, &me.valueBuf); err != nil {
 			return err
 		}
 	}
