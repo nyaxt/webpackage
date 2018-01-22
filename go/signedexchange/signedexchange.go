@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/url"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/WICG/webpackage/go/signedexchange/cbor"
 )
@@ -26,80 +28,50 @@ type Input struct {
 	Payload []byte
 }
 
-type headersSorter []ResponseHeader
-
-var _ = sort.Interface(headersSorter{})
-
-func (s headersSorter) Len() int           { return len(s) }
-func (s headersSorter) Less(i, j int) bool { return s[i].Name < s[j].Name }
-func (s headersSorter) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-type requestE struct {
-	_struct bool `codec:",toarray"`
-
-	MethodTag []byte
-	Method    []byte
-	UrlTag    []byte
-	Url       []byte
-}
-
-func encodeRequest(e cbor.Encoder, i *Input) error {
-	mes := []cbor.MapEntryEncoder{
-		GenerateMapEntry(func(keyE Encoder, valueE Encoder) {
+func encodeCanonicalRequest(e *cbor.Encoder, i *Input) error {
+	mes := []*cbor.MapEntryEncoder{
+		cbor.GenerateMapEntry(func(keyE cbor.Encoder, valueE cbor.Encoder) {
 			keyE.EncodeByteString([]byte(":method"))
 			valueE.EncodeByteString([]byte("GET"))
 		}),
-		GenerateMapEntry(func(keyE Encoder, valueE Encoder) {
-			keyE.EncodeByteString([]byte(":method"))
-			valueE.EncodeByteString([]byte("GET"))
+		cbor.GenerateMapEntry(func(keyE cbor.Encoder, valueE cbor.Encoder) {
+			keyE.EncodeByteString([]byte(":url"))
+			valueE.EncodeByteString([]byte(i.RequestUri.String()))
 		}),
 	}
 	sort.Sort(cbor.MapEntryEncoderSorter(mes))
+
+	return e.EncodeMap(mes)
 }
 
-func WriteExchange(w io.Writer, i *Input) error {
-	sort.Sort(headersSorter(i.ResponseHeaders))
+func encodeCanonicalResponseHeader(e *cbor.Encoder, i *Input) error {
+	mes := make([]*cbor.MapEntryEncoder, 0, len(i.ResponseHeaders)+1)
+	mes = append(mes,
+		cbor.GenerateMapEntry(func(keyE cbor.Encoder, valueE cbor.Encoder) {
+			keyE.EncodeByteString([]byte(":status"))
+			valueE.EncodeByteString([]byte(strconv.Itoa(i.ResponseStatus)))
+		}))
+	for _, rh := range i.ResponseHeaders {
+		mes = append(mes,
+			cbor.GenerateMapEntry(func(keyE cbor.Encoder, valueE cbor.Encoder) {
+				keyE.EncodeByteString([]byte(strings.ToLower(rh.Name)))
+				valueE.EncodeByteString([]byte(rh.Value))
+			}))
+	}
 
-	statusStr := fmt.Sprintf("%03d", i.ResponseStatus)
+	return e.EncodeMap(mes)
+}
 
+func WriteCanonicalExchangeHeaders(w io.Writer, i *Input) error {
 	e := &cbor.Encoder{w}
-	if err := e.EncodeArrayHeader(6); err != nil {
+	if err := e.EncodeArrayHeader(2); err != nil {
 		return fmt.Errorf("Failed to encode top-level array header: %v", err)
 	}
-	if err := e.EncodeTextString("request"); err != nil {
-		return fmt.Errorf("Failed to encode top-level array item \"request\": %v", err)
-	}
-	if err := encodeRequest(e, i); err != nil {
+	if err := encodeCanonicalRequest(e, i); err != nil {
 		return err
 	}
-	if err := e.EncodeTextString("response"); err != nil {
-		return fmt.Errorf("Failed to encode top-level array item \"request\": %v", err)
-	}
-	if err := encodeResponseHeader(w, i); err != nil {
+	if err := encodeCanonicalResponseHeader(e, i); err != nil {
 		return err
-	}
-	if err := e.EncodeTextString("payload"); err != nil {
-		return fmt.Errorf("Failed to encode top-level array item \"request\": %v", err)
-	}
-	if err := e.EncodeByteString(i.Payload); err != nil {
-		return fmt.Errorf("Failed to encode payload: %v", err)
-	}
-
-	respary := [][]byte{
-		[]byte(statusStr),
-	}
-	for _, rh := range i.ResponseHeaders {
-		respary = append(respary, []byte(rh.Name), []byte(rh.Value))
-	}
-
-	exc := &exchangeE{
-		Request: &requestE{
-			MethodTag: []byte(":method"),
-			Method:    []byte("GET"),
-			UrlTag:    []byte(":url"),
-			Url:       []byte(i.RequestUri.String()),
-		},
-		ResponseArray: respary,
 	}
 	return nil
 }

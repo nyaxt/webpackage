@@ -49,7 +49,7 @@ func main() {
 		Payload: payload,
 	}
 
-	if err := se.WriteExchange(f, input); err != nil {
+	if err := se.WriteCanonicalExchangeHeaders(f, input); err != nil {
 		log.Printf("Failed to write exchange. err: %v", err)
 		os.Exit(1)
 	}
