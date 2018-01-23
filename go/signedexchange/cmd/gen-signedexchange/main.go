@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"time"
 
 	se "github.com/WICG/webpackage/go/signedexchange"
 )
@@ -16,7 +17,7 @@ var (
 	flagContent         = flag.String("content", "index.html", "Source file to be used as the exchange payload")
 	flagCertificatePath = flag.String("certificate", "cert.pem", "Certificate chain PEM file of the origin")
 	flagPrivateKeyPath  = flag.String("privateKey", "cert-key.pem", "Private key PEM file of the origin")
-	flagOutput          = flag.String("o", "out.wpk", "Signed exchange output file")
+	flagOutput          = flag.String("o", "out.htxg", "Signed exchange output file")
 )
 
 func main() {
@@ -47,6 +48,8 @@ func main() {
 			se.ResponseHeader{Name: "Content-Type", Value: "text/html; charset=utf-8"},
 		},
 		Payload: payload,
+
+		Date: time.Now(),
 	}
 	input.AddSignedHeadersHeader([]string{"Content-Type"})
 
