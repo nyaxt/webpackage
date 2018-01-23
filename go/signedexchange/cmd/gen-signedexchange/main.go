@@ -48,8 +48,9 @@ func main() {
 		},
 		Payload: payload,
 	}
+	input.AddSignedHeadersHeader([]string{"Content-Type"})
 
-	if err := se.WriteCanonicalExchangeHeaders(f, input); err != nil {
+	if err := se.WriteExchangeFile(f, input); err != nil {
 		log.Printf("Failed to write exchange. err: %v", err)
 		os.Exit(1)
 	}
