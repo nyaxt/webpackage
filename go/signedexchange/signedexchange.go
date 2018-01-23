@@ -138,7 +138,9 @@ func encodeCanonicalExchangeHeaders(e *cbor.Encoder, i *Input) error {
 
 func SerializeSignedMessage(i *Input) ([]byte, error) {
 	/*
-	  "Let message be the concatenation of the following byte strings. This matches the [I-D.ietf-tls-tls13] format to avoid cross-protocol attacks when TLS certificates are used to sign manifests." [spec text]
+		"Let message be the concatenation of the following byte strings.
+		This matches the [I-D.ietf-tls-tls13] format to avoid cross-protocol
+		attacks when TLS certificates are used to sign manifests." [spec text]
 	*/
 
 	var buf bytes.Buffer
