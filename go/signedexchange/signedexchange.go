@@ -1,14 +1,12 @@
 package signedexchange
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/WICG/webpackage/go/signedexchange/cbor"
 )
@@ -20,17 +18,17 @@ type ResponseHeader struct {
 
 type Input struct {
 	// * Request
+
 	RequestUri *url.URL
 
 	// * Response
+
 	ResponseStatus  int
 	ResponseHeaders []ResponseHeader
 
 	// * Payload
-	Payload []byte
 
-	Date    time.Time
-	Expires time.Time
+	Payload []byte
 }
 
 func (i *Input) AddSignedHeadersHeader(ks []string) {
@@ -134,66 +132,6 @@ func encodeCanonicalExchangeHeaders(e *cbor.Encoder, i *Input) error {
 		return err
 	}
 	return nil
-}
-
-func SerializeSignedMessage(i *Input) ([]byte, error) {
-	/*
-		"Let message be the concatenation of the following byte strings.
-		This matches the [I-D.ietf-tls-tls13] format to avoid cross-protocol
-		attacks when TLS certificates are used to sign manifests." [spec text]
-	*/
-
-	var buf bytes.Buffer
-
-	// "1. A string that consists of octet 32 (0x20) repeated 64 times." [spec text]
-	for i := 0; i < 64; i++ {
-		buf.WriteByte(0x20)
-	}
-
-	// "2. A context string: the ASCII encoding of "HTTP Exchange"." [spec text]
-	buf.WriteString("HTTP Exchange")
-
-	// "3. A single 0 byte which serves as a separator." [spec text]
-	buf.WriteByte(0)
-
-	// "4. The bytes of the canonical CBOR serialization (Section 3.5) of a CBOR map mapping:" [spec text]
-	mes := make([]*cbor.MapEntryEncoder, 0, 4)
-
-	// "4.1. If certSha256 is set: The text string "certSha256" to the byte string certSha256." [spec text]
-	certSha256 := []byte("FIXMEFIXME")
-	mes = append(mes,
-		cbor.GenerateMapEntry(func(keyE cbor.Encoder, valueE cbor.Encoder) {
-			keyE.EncodeTextString("certSha256")
-			valueE.EncodeByteString(certSha256)
-		}))
-
-	mes = append(mes,
-		// "4.2. The text string "date" to the integer value of date." [spec text]
-		cbor.GenerateMapEntry(func(keyE cbor.Encoder, valueE cbor.Encoder) {
-			keyE.EncodeTextString("date")
-			valueE.EncodeInt(i.Date.Unix())
-		}),
-		// "4.3. The text string "expires" to the integer value of expires." [spec text]
-		cbor.GenerateMapEntry(func(keyE cbor.Encoder, valueE cbor.Encoder) {
-			keyE.EncodeTextString("expires")
-			valueE.EncodeInt(i.Expires.Unix())
-		}),
-	)
-
-	// "4.4. The text string "headers" to the CBOR representation (Section 3.4) of exchange's headers."
-	meHeaders := cbor.NewMapEntry()
-	meHeaders.KeyE.EncodeTextString("headers")
-	if err := encodeCanonicalExchangeHeaders(&meHeaders.ValueE, i); err != nil {
-		return nil, err
-	}
-	mes = append(mes, meHeaders)
-
-	e := &cbor.Encoder{&buf}
-	if err := e.EncodeMap(mes); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
 }
 
 // Write draft-yasskin-http-origin-signed-responses.html#application-http-exchange
