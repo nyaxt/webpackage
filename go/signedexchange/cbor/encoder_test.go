@@ -175,13 +175,13 @@ func TestMapEncoderSorter(t *testing.T) {
 		fromHex("F4"),
 	}
 	for i, exp := range keyExp {
-		if !bytes.Equal(exp, es[i].Bytes()) {
-			t.Errorf("FAIL key %d expected to encode to %v, actual %v ", i, exp, es[i].Bytes())
+		if !bytes.Equal(exp, es[i].KeyBytes()) {
+			t.Errorf("FAIL key %d expected to encode to %v, actual %v ", i, exp, es[i].KeyBytes())
 		}
 	}
 
 	if !sort.SliceIsSorted(es, func(i, j int) bool {
-		return bytes.Compare(es[i].Bytes(), es[j].Bytes()) < 0
+		return bytes.Compare(es[i].KeyBytes(), es[j].KeyBytes()) < 0
 	}) {
 		t.Errorf("FAIL")
 	}

@@ -30,6 +30,8 @@ func (e *Encoder) encodeTypedUInt(t Type, n uint64) error {
 	//   integer 500 would be 0b000_11001 (major type 0, additional
 	//   information 25) followed by the two bytes 0x01f4, which is 500 in
 	//   decimal.
+	//
+	// https://tools.ietf.org/html/rfc7049#section-2.1
 	ai := byte(0) // "additional information"
 	nfollow := 0  // length of the following bytes
 	switch {
@@ -78,6 +80,8 @@ func (e *Encoder) EncodeInt(n int64) error {
 	//   integer -500 would be 0b001_11001 (major type 1, additional
 	//   information 25) followed by the two bytes 0x01f3, which is 499 in
 	//   decimal.
+	//
+	// https://tools.ietf.org/html/rfc7049#section-2.1
 	return e.encodeTypedUInt(TypeNegInt, uint64(-n)-1)
 }
 
@@ -101,6 +105,8 @@ func (e *Encoder) EncodeByteString(bs []byte) error {
 	//   0b010_11001 (major type 2, additional information 25 to indicate a
 	//   two-byte length) followed by the two bytes 0x01f4 for a length of
 	//   500, followed by 500 bytes of binary content.
+	//
+	// https://tools.ietf.org/html/rfc7049#section-2.1
 	return e.encodeBytes(TypeBytes, bs)
 }
 
@@ -118,6 +124,8 @@ func (e *Encoder) EncodeTextString(s string) error {
 	//   0x0a, and never as the bytes 0x5c6e (the characters "\" and "n")
 	//   or as 0x5c7530303061 (the characters "\", "u", "0", "0", "0", and
 	//   "a").
+	//
+	// https://tools.ietf.org/html/rfc7049#section-2.1
 	bs := []byte(s)
 	if !utf8.Valid(bs) {
 		return ErrInvalidUTF8
@@ -136,6 +144,8 @@ func (e *Encoder) EncodeArrayHeader(n int) error {
 	//   have an initial byte of 0b100_01010 (major type of 4, additional
 	//   information of 10 for the length) followed by the 10 remaining
 	//   items.
+	//
+	// https://tools.ietf.org/html/rfc7049#section-2.1
 	return e.encodeTypedUInt(TypeArray, uint64(n))
 }
 
@@ -171,7 +181,7 @@ func NewMapEntry() *MapEntryEncoder {
 	return e
 }
 
-func (e *MapEntryEncoder) Bytes() []byte {
+func (e *MapEntryEncoder) KeyBytes() []byte {
 	return e.keyBuf.Bytes()
 }
 
