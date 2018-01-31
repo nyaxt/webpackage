@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"time"
@@ -71,10 +72,9 @@ func run() error {
 		return fmt.Errorf("failed to parse URL \"%s\". err: %v", *flagUri, err)
 	}
 
-	i, err := signedexchange.NewInput(parsedUrl, *flagResponseStatus, []signedexchange.ResponseHeader{
-		// FIXME
-		{Name: "Content-Type", Value: "text/html; charset=utf-8"},
-	}, payload, *flagMIRecordSize)
+	header := http.Header{}
+	header.Add("Content-Type", "text/html; charset=utf-8")
+	i, err := signedexchange.NewInput(parsedUrl, *flagResponseStatus, header, payload, *flagMIRecordSize)
 	if err != nil {
 		return err
 	}
@@ -91,8 +91,7 @@ func run() error {
 		return fmt.Errorf("failed to compute Signature header value. err: %v", err)
 	}
 
-	i.ResponseHeaders = append(i.ResponseHeaders,
-		signedexchange.ResponseHeader{Name: "Signature", Value: sigHdr})
+	i.ResponseHeader.Add("Signature", sigHdr)
 
 	if err := signedexchange.WriteExchangeFile(f, i); err != nil {
 		return fmt.Errorf("failed to write exchange. err: %v", err)

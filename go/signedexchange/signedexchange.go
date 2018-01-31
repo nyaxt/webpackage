@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -12,29 +13,24 @@ import (
 	"github.com/WICG/webpackage/go/signedexchange/mice"
 )
 
-type ResponseHeader struct {
-	Name  string
-	Value string
-}
-
 type Input struct {
 	// Request
 	RequestUri *url.URL
 
 	// Response
-	ResponseStatus  int
-	ResponseHeaders []ResponseHeader
+	ResponseStatus int
+	ResponseHeader http.Header
 
 	// Payload
 	Payload []byte
 }
 
-func NewInput(uri *url.URL, status int, headers []ResponseHeader, payload []byte, miRecordSize int) (*Input, error) {
+func NewInput(uri *url.URL, status int, headers http.Header, payload []byte, miRecordSize int) (*Input, error) {
 	i := &Input{
-		RequestUri:      uri,
-		ResponseStatus:  status,
-		ResponseHeaders: headers,
-		Payload:         payload,
+		RequestUri:     uri,
+		ResponseStatus: status,
+		ResponseHeader: headers,
+		Payload:        payload,
 	}
 	if err := i.miEncode(miRecordSize); err != nil {
 		return nil, err
@@ -49,13 +45,12 @@ func (i *Input) miEncode(recordSize int) error {
 		return err
 	}
 	i.Payload = buf.Bytes()
-	i.ResponseHeaders = append(i.ResponseHeaders,
-		ResponseHeader{Name: "Content-Encoding", Value: "mi-sha256"},
-		ResponseHeader{Name: "MI", Value: mi})
+	i.ResponseHeader.Add("Content-Encoding", "mi-sha256")
+	i.ResponseHeader.Add("MI", mi)
 	return nil
 }
 
-// AddSignedHeadersHeader adds 'signed-headers' header to the response.
+// AddSignedHeaderHeader adds 'signed-headers' header to the response.
 //
 // Signed-Headers is a Structured Header as defined by
 // [I-D.ietf-httpbis-header-structure]. Its value MUST be a list (Section 4.8
@@ -69,26 +64,11 @@ func (i *Input) AddSignedHeadersHeader(ks ...string) {
 		strs = append(strs, fmt.Sprintf(`"%s"`, strings.ToLower(k)))
 	}
 	s := strings.Join(strs, ", ")
-
-	i.ResponseHeaders = append(i.ResponseHeaders, ResponseHeader{
-		Name:  "signed-headers",
-		Value: s,
-	})
-}
-
-func (i *Input) responseHeaderValue(k string) string {
-	k = strings.ToLower(k)
-	for _, rh := range i.ResponseHeaders {
-		if strings.ToLower(rh.Name) == k {
-			return rh.Value
-		}
-	}
-
-	return ""
+	i.ResponseHeader.Add("signed-headers", s)
 }
 
 func (i *Input) parseSignedHeadersHeader() []string {
-	unparsed := i.responseHeaderValue("signed-headers")
+	unparsed := i.ResponseHeader.Get("signed-headers")
 
 	rawks := strings.Split(unparsed, ",")
 	ks := make([]string, 0, len(rawks))
@@ -121,15 +101,15 @@ func encodeResponseHeader(e *cbor.Encoder, i *Input, filter func(string) bool) e
 			valueE.EncodeByteString([]byte(strconv.Itoa(i.ResponseStatus)))
 		}),
 	}
-	for _, rh := range i.ResponseHeaders {
-		if !filter(rh.Name) {
+	for name, value := range i.ResponseHeader {
+		if !filter(name) {
 			continue
 		}
 
 		mes = append(mes,
 			cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
-				keyE.EncodeByteString([]byte(strings.ToLower(rh.Name)))
-				valueE.EncodeByteString([]byte(rh.Value))
+				keyE.EncodeByteString([]byte(strings.ToLower(name)))
+				valueE.EncodeByteString([]byte(value[0]))
 			}))
 	}
 	return e.EncodeMap(mes)

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -113,13 +114,9 @@ GRqzPwjon7ESIVpKLrVuh5qlMhUkOFUeF9wvViWX4qnV5Fvg
 
 func TestSignedExchange(t *testing.T) {
 	u, _ := url.Parse("https://example.com/")
-	headers := []signedexchange.ResponseHeader{
-		{
-			Name:  "Content-Type",
-			Value: "text/html; charset=utf-8",
-		},
-	}
-	i, err := signedexchange.NewInput(u, 200, headers, []byte(payload), 16)
+	header := http.Header{}
+	header.Add("Content-Type", "text/html; charset=utf-8")
+	i, err := signedexchange.NewInput(u, 200, header, []byte(payload), 16)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,10 +146,7 @@ func TestSignedExchange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	i.ResponseHeaders = append(i.ResponseHeaders, signedexchange.ResponseHeader{
-		Name:  "Signature",
-		Value: sigHdr,
-	})
+	i.ResponseHeader.Add("Signature", sigHdr)
 
 	var buf bytes.Buffer
 	signedexchange.WriteExchangeFile(&buf, i)
