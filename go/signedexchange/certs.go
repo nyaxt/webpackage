@@ -21,7 +21,7 @@ func ParseCertificates(text []byte) ([]*x509.Certificate, error) {
 		if block.Type != "CERTIFICATE" {
 			return nil, fmt.Errorf("signedexchange: found a block that contains %q.", block.Type)
 		}
-		if len(block.Headers) != 0 {
+		if len(block.Headers) > 0 {
 			return nil, fmt.Errorf("signedexchange: unexpected certificate headers: %v", block.Headers)
 		}
 		cert, err := x509.ParseCertificate(block.Bytes)
