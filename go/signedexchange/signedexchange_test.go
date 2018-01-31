@@ -142,11 +142,9 @@ func TestSignedExchange(t *testing.T) {
 		CertUrl: certUrl,
 		PrivKey: privKey,
 	}
-	sigHdr, err := s.SignatureHeaderValue(i)
-	if err != nil {
+	if err := i.AddSignatureHeader(s); err != nil {
 		t.Fatal(err)
 	}
-	i.ResponseHeader.Add("Signature", sigHdr)
 
 	var buf bytes.Buffer
 	signedexchange.WriteExchangeFile(&buf, i)

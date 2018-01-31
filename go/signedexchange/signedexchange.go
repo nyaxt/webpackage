@@ -15,22 +15,22 @@ import (
 
 type Input struct {
 	// Request
-	RequestUri *url.URL
+	requestUri *url.URL
 
 	// Response
-	ResponseStatus int
-	ResponseHeader http.Header
+	responseStatus int
+	responseHeader http.Header
 
 	// Payload
-	Payload []byte
+	payload []byte
 }
 
 func NewInput(uri *url.URL, status int, headers http.Header, payload []byte, miRecordSize int) (*Input, error) {
 	i := &Input{
-		RequestUri:     uri,
-		ResponseStatus: status,
-		ResponseHeader: headers,
-		Payload:        payload,
+		requestUri:     uri,
+		responseStatus: status,
+		responseHeader: headers,
+		payload:        payload,
 	}
 	if err := i.miEncode(miRecordSize); err != nil {
 		return nil, err
@@ -40,13 +40,13 @@ func NewInput(uri *url.URL, status int, headers http.Header, payload []byte, miR
 
 func (i *Input) miEncode(recordSize int) error {
 	var buf bytes.Buffer
-	mi, err := mice.Encode(&buf, i.Payload, recordSize)
+	mi, err := mice.Encode(&buf, i.payload, recordSize)
 	if err != nil {
 		return err
 	}
-	i.Payload = buf.Bytes()
-	i.ResponseHeader.Add("Content-Encoding", "mi-sha256")
-	i.ResponseHeader.Add("MI", mi)
+	i.payload = buf.Bytes()
+	i.responseHeader.Add("Content-Encoding", "mi-sha256")
+	i.responseHeader.Add("MI", mi)
 	return nil
 }
 
@@ -64,11 +64,20 @@ func (i *Input) AddSignedHeadersHeader(ks ...string) {
 		strs = append(strs, fmt.Sprintf(`"%s"`, strings.ToLower(k)))
 	}
 	s := strings.Join(strs, ", ")
-	i.ResponseHeader.Add("signed-headers", s)
+	i.responseHeader.Add("signed-headers", s)
+}
+
+func (i *Input) AddSignatureHeader(s *Signer) error {
+	h, err := s.SignatureHeaderValue(i)
+	if err != nil {
+		return err
+	}
+	i.responseHeader.Add("Signature", h)
+	return nil
 }
 
 func (i *Input) parseSignedHeadersHeader() []string {
-	unparsed := i.ResponseHeader.Get("signed-headers")
+	unparsed := i.responseHeader.Get("signed-headers")
 
 	rawks := strings.Split(unparsed, ",")
 	ks := make([]string, 0, len(rawks))
@@ -88,7 +97,7 @@ func encodeCanonicalRequest(e *cbor.Encoder, i *Input) error {
 		}),
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 			keyE.EncodeByteString([]byte(":url"))
-			valueE.EncodeByteString([]byte(i.RequestUri.String()))
+			valueE.EncodeByteString([]byte(i.requestUri.String()))
 		}),
 	}
 	return e.EncodeMap(mes)
@@ -98,10 +107,10 @@ func encodeResponseHeader(e *cbor.Encoder, i *Input, filter func(string) bool) e
 	mes := []*cbor.MapEntryEncoder{
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 			keyE.EncodeByteString([]byte(":status"))
-			valueE.EncodeByteString([]byte(strconv.Itoa(i.ResponseStatus)))
+			valueE.EncodeByteString([]byte(strconv.Itoa(i.responseStatus)))
 		}),
 	}
-	for name, value := range i.ResponseHeader {
+	for name, value := range i.responseHeader {
 		if !filter(name) {
 			continue
 		}
@@ -169,7 +178,7 @@ func WriteExchangeFile(w io.Writer, i *Input) error {
 	if err := e.EncodeTextString("payload"); err != nil {
 		return err
 	}
-	if err := e.EncodeByteString(i.Payload); err != nil {
+	if err := e.EncodeByteString(i.payload); err != nil {
 		return err
 	}
 

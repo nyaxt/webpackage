@@ -86,12 +86,9 @@ func run() error {
 		CertUrl: certUrl,
 		PrivKey: privkey,
 	}
-	sigHdr, err := s.SignatureHeaderValue(i)
-	if err != nil {
-		return fmt.Errorf("failed to compute Signature header value. err: %v", err)
+	if err := i.AddSignatureHeader(s); err != nil {
+		return err
 	}
-
-	i.ResponseHeader.Add("Signature", sigHdr)
 
 	if err := signedexchange.WriteExchangeFile(f, i); err != nil {
 		return fmt.Errorf("failed to write exchange. err: %v", err)
