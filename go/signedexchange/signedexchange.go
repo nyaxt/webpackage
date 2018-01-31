@@ -30,17 +30,16 @@ func NewInput(uri *url.URL, status int, headers http.Header, payload []byte, miR
 		requestUri:     uri,
 		responseStatus: status,
 		responseHeader: headers,
-		payload:        payload,
 	}
-	if err := i.miEncode(miRecordSize); err != nil {
+	if err := i.miEncode(payload, miRecordSize); err != nil {
 		return nil, err
 	}
 	return i, nil
 }
 
-func (i *Input) miEncode(recordSize int) error {
+func (i *Input) miEncode(payload []byte, recordSize int) error {
 	var buf bytes.Buffer
-	mi, err := mice.Encode(&buf, i.payload, recordSize)
+	mi, err := mice.Encode(&buf, payload, recordSize)
 	if err != nil {
 		return err
 	}
@@ -50,7 +49,7 @@ func (i *Input) miEncode(recordSize int) error {
 	return nil
 }
 
-// AddSignedHeaderHeader adds 'signed-headers' header to the response.
+// AddSignedHeadersHeader adds 'signed-headers' header to the response.
 //
 // Signed-Headers is a Structured Header as defined by
 // [I-D.ietf-httpbis-header-structure]. Its value MUST be a list (Section 4.8
@@ -68,7 +67,7 @@ func (i *Input) AddSignedHeadersHeader(ks ...string) {
 }
 
 func (i *Input) AddSignatureHeader(s *Signer) error {
-	h, err := s.SignatureHeaderValue(i)
+	h, err := s.signatureHeaderValue(i)
 	if err != nil {
 		return err
 	}
@@ -82,14 +81,12 @@ func (i *Input) parseSignedHeadersHeader() []string {
 	rawks := strings.Split(unparsed, ",")
 	ks := make([]string, 0, len(rawks))
 	for _, k := range rawks {
-		k = strings.TrimPrefix(k, "\"")
-		k = strings.TrimSuffix(k, "\"")
-		ks = append(ks, k)
+		ks = append(ks, strings.Trim(k, "\""))
 	}
 	return ks
 }
 
-func encodeCanonicalRequest(e *cbor.Encoder, i *Input) error {
+func (i *Input) encodeCanonicalRequest(e *cbor.Encoder) error {
 	mes := []*cbor.MapEntryEncoder{
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 			keyE.EncodeByteString([]byte(":method"))
@@ -103,7 +100,17 @@ func encodeCanonicalRequest(e *cbor.Encoder, i *Input) error {
 	return e.EncodeMap(mes)
 }
 
-func encodeResponseHeader(e *cbor.Encoder, i *Input, filter func(string) bool) error {
+func (i *Input) encodeResponseHeader(e *cbor.Encoder, onlySignedHeaders bool) error {
+	// Only encode response headers which are specified in "signed-headers" header.
+	var m map[string]struct{}
+	if onlySignedHeaders {
+		m = map[string]struct{}{}
+		ks := i.parseSignedHeadersHeader()
+		for _, k := range ks {
+			m[k] = struct{}{}
+		}
+	}
+
 	mes := []*cbor.MapEntryEncoder{
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 			keyE.EncodeByteString([]byte(":status"))
@@ -111,10 +118,11 @@ func encodeResponseHeader(e *cbor.Encoder, i *Input, filter func(string) bool) e
 		}),
 	}
 	for name, value := range i.responseHeader {
-		if !filter(name) {
-			continue
+		if onlySignedHeaders {
+			if _, ok := m[name]; !ok {
+				continue
+			}
 		}
-
 		mes = append(mes,
 			cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 				keyE.EncodeByteString([]byte(strings.ToLower(name)))
@@ -124,25 +132,15 @@ func encodeResponseHeader(e *cbor.Encoder, i *Input, filter func(string) bool) e
 	return e.EncodeMap(mes)
 }
 
-func allKeys(string) bool { return true }
-
 // Write draft-yasskin-http-origin-signed-responses.html#rfc.section.3.4
-func encodeCanonicalExchangeHeaders(e *cbor.Encoder, i *Input) error {
+func (i *Input) encodeCanonicalExchangeHeaders(e *cbor.Encoder) error {
 	if err := e.EncodeArrayHeader(2); err != nil {
 		return fmt.Errorf("signedexchange: failed to encode top-level array header: %v", err)
 	}
-	if err := encodeCanonicalRequest(e, i); err != nil {
+	if err := i.encodeCanonicalRequest(e); err != nil {
 		return err
 	}
-
-	// Only encode response headers which are specified in "signed-headers" header.
-	ks := i.parseSignedHeadersHeader()
-	m := map[string]bool{}
-	for _, k := range ks {
-		m[k] = true
-	}
-	hf := func(k string) bool { return m[k] }
-	if err := encodeResponseHeader(e, i, hf); err != nil {
+	if err := i.encodeResponseHeader(e, true); err != nil {
 		return err
 	}
 	return nil
@@ -162,7 +160,7 @@ func WriteExchangeFile(w io.Writer, i *Input) error {
 		return err
 	}
 	// FIXME: This may diverge in future.
-	if err := encodeCanonicalRequest(e, i); err != nil {
+	if err := i.encodeCanonicalRequest(e); err != nil {
 		return err
 	}
 
@@ -171,7 +169,7 @@ func WriteExchangeFile(w io.Writer, i *Input) error {
 	if err := e.EncodeTextString("response"); err != nil {
 		return err
 	}
-	if err := encodeResponseHeader(e, i, allKeys); err != nil {
+	if err := i.encodeResponseHeader(e, false); err != nil {
 		return err
 	}
 

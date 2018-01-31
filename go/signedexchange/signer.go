@@ -21,15 +21,13 @@ type Signer struct {
 	PrivKey crypto.PrivateKey
 }
 
-func (s *Signer) certSha256() []byte {
+func certSha256(certs []*x509.Certificate) []byte {
 	// Binary content (Section 4.5 of [I-D.ietf-httpbis-header-structure])
 	// holding the SHA-256 hash of the first certificate found at "certUrl".
-	if len(s.Certs) == 0 {
+	if len(certs) == 0 {
 		return nil
 	}
-
-	c := s.Certs[0]
-	sum := sha256.Sum256(c.Raw)
+	sum := sha256.Sum256(certs[0].Raw)
 	return sum[:]
 }
 
@@ -56,8 +54,7 @@ func (s *Signer) serializeSignedMessage(i *Input) ([]byte, error) {
 
 	// "4.1. If certSha256 is set: The text string "certSha256" to the byte string
 	// certSha256." [spec text]
-	//if b := s.certSha256(); len(b) != 0 {
-	if b := s.certSha256(); len(b) > 0 {
+	if b := certSha256(s.Certs); len(b) > 0 {
 		mes = append(mes,
 			cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 				keyE.EncodeTextString("certSha256")
@@ -82,7 +79,7 @@ func (s *Signer) serializeSignedMessage(i *Input) ([]byte, error) {
 		// 3.4) of exchange's headers."
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 			keyE.EncodeTextString("headers")
-			encodeCanonicalExchangeHeaders(valueE, i)
+			i.encodeCanonicalExchangeHeaders(valueE)
 		}),
 	)
 
@@ -107,7 +104,7 @@ func (s *Signer) sign(i *Input) ([]byte, error) {
 	return alg.sign(msg)
 }
 
-func (s *Signer) SignatureHeaderValue(i *Input) (string, error) {
+func (s *Signer) signatureHeaderValue(i *Input) (string, error) {
 	sig, err := s.sign(i)
 	if err != nil {
 		return "", err
@@ -116,7 +113,7 @@ func (s *Signer) SignatureHeaderValue(i *Input) (string, error) {
 	sigb64 := base64.RawStdEncoding.EncodeToString(sig)
 	integrityStr := "mi"
 	certUrl := s.CertUrl.String()
-	certSha256b64 := base64.RawStdEncoding.EncodeToString(s.certSha256())
+	certSha256b64 := base64.RawStdEncoding.EncodeToString(certSha256(s.Certs))
 	dateUnix := s.Date.Unix()
 	expiresUnix := s.Expires.Unix()
 

@@ -154,7 +154,7 @@ func TestSignedExchange(t *testing.T) {
 		t.Errorf("len(got) vs len(want): got: %v, want: %v", len(got), len(want))
 	}
 	// As the data includes random values, the result will not be same.
-	if got[len(got)-100:] != want[len(want)-100:] {
+	if got[800:] != want[800:] {
 		t.Errorf("WriteExchangeFile:\ngot %v\nwant %v", got, want)
 	}
 }
