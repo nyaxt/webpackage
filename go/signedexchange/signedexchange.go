@@ -81,7 +81,7 @@ func (i *Input) parseSignedHeadersHeader() []string {
 	rawks := strings.Split(unparsed, ",")
 	ks := make([]string, 0, len(rawks))
 	for _, k := range rawks {
-		ks = append(ks, strings.Trim(strings.TrimSpace(k), "\""))
+		ks = append(ks, strings.Trim(k, "\" "))
 	}
 	return ks
 }
@@ -132,7 +132,7 @@ func (i *Input) encodeResponseHeader(e *cbor.Encoder, onlySignedHeaders bool) er
 	return e.EncodeMap(mes)
 }
 
-// Write draft-yasskin-http-origin-signed-responses.html#rfc.section.3.4
+// draft-yasskin-http-origin-signed-responses.html#rfc.section.3.4
 func (i *Input) encodeCanonicalExchangeHeaders(e *cbor.Encoder) error {
 	if err := e.EncodeArrayHeader(2); err != nil {
 		return fmt.Errorf("signedexchange: failed to encode top-level array header: %v", err)
@@ -146,7 +146,7 @@ func (i *Input) encodeCanonicalExchangeHeaders(e *cbor.Encoder) error {
 	return nil
 }
 
-// Write draft-yasskin-http-origin-signed-responses.html#application-http-exchange
+// draft-yasskin-http-origin-signed-responses.html#application-http-exchange
 func WriteExchangeFile(w io.Writer, i *Input) error {
 	e := cbor.NewEncoder(w)
 	if err := e.EncodeArrayHeader(7); err != nil {
@@ -169,6 +169,7 @@ func WriteExchangeFile(w io.Writer, i *Input) error {
 	if err := e.EncodeTextString("response"); err != nil {
 		return err
 	}
+
 	if err := i.encodeResponseHeader(e, false); err != nil {
 		return err
 	}

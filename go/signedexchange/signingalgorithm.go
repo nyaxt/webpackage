@@ -33,12 +33,11 @@ type ecdsaSigner struct {
 	rand    io.Reader
 }
 
-// From RFC5480:
-type ecdsaSigValue struct {
-	r, s *big.Int
-}
-
 func (e *ecdsaSigner) sign(m []byte) ([]byte, error) {
+	type ecdsaSigValue struct {
+		r, s *big.Int
+	}
+
 	hash := e.hash.New()
 	hash.Write(m)
 	r, s, err := ecdsa.Sign(e.rand, e.privKey, hash.Sum(nil))
@@ -55,7 +54,7 @@ func signerForPrivateKey(pk crypto.PrivateKey, rand io.Reader) (signer, error) {
 		if bits == 2048 {
 			return &rsaPSSSigner{pk, crypto.SHA256, rand}, nil
 		}
-		return nil, fmt.Errorf("signedexchange: unsupported RSA key size: %v bits", bits)
+		return nil, fmt.Errorf("signedexchange: unsupported RSA key size: %d bits", bits)
 	case *ecdsa.PrivateKey:
 		switch name := pk.Curve.Params().Name; name {
 		case elliptic.P256().Params().Name:
@@ -63,7 +62,7 @@ func signerForPrivateKey(pk crypto.PrivateKey, rand io.Reader) (signer, error) {
 		case elliptic.P384().Params().Name:
 			return &ecdsaSigner{pk, crypto.SHA384, rand}, nil
 		default:
-			return nil, fmt.Errorf("signedexchange: unknown ECDSA curve: %v", name)
+			return nil, fmt.Errorf("signedexchange: unknown ECDSA curve: %s", name)
 		}
 	}
 	return nil, fmt.Errorf("signedexchange: unknown public key type: %T", pk)
