@@ -81,7 +81,7 @@ func (i *Input) parseSignedHeadersHeader() []string {
 	rawks := strings.Split(unparsed, ",")
 	ks := make([]string, 0, len(rawks))
 	for _, k := range rawks {
-		ks = append(ks, strings.Trim(k, "\""))
+		ks = append(ks, strings.Trim(strings.TrimSpace(k), "\""))
 	}
 	return ks
 }
@@ -119,7 +119,7 @@ func (i *Input) encodeResponseHeader(e *cbor.Encoder, onlySignedHeaders bool) er
 	}
 	for name, value := range i.responseHeader {
 		if onlySignedHeaders {
-			if _, ok := m[name]; !ok {
+			if _, ok := m[strings.ToLower(name)]; !ok {
 				continue
 			}
 		}
