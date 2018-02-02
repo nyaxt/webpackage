@@ -3,10 +3,12 @@ package signedexchange
 import (
 	"bytes"
 	"crypto"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/url"
 	"time"
 
@@ -19,6 +21,7 @@ type Signer struct {
 	Certs   []*x509.Certificate
 	CertUrl *url.URL
 	PrivKey crypto.PrivateKey
+	Rand    io.Reader
 }
 
 func certSha256(certs []*x509.Certificate) []byte {
@@ -91,7 +94,11 @@ func (s *Signer) serializeSignedMessage(i *Input) ([]byte, error) {
 }
 
 func (s *Signer) sign(i *Input) ([]byte, error) {
-	alg, err := signerForPrivateKey(s.PrivKey)
+	r := s.Rand
+	if r == nil {
+		r = rand.Reader
+	}
+	alg, err := signerForPrivateKey(s.PrivKey, r)
 	if err != nil {
 		return nil, err
 	}
