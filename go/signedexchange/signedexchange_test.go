@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/pem"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -132,7 +131,6 @@ func TestSignedExchange(t *testing.T) {
 	i.AddSignedHeadersHeader("Content-Type", "Content-Encoding", "MI")
 
 	now := time.Date(2018, 1, 31, 17, 13, 20, 0, time.UTC)
-	fmt.Println(now)
 	certs, err := signedexchange.ParseCertificates([]byte(pemCerts))
 	if err != nil {
 		t.Fatal(err)
