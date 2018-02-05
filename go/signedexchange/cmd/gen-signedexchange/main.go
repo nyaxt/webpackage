@@ -83,6 +83,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	i.AddSignedHeadersHeader("content-type", "mi")
 
 	s := &signedexchange.Signer{
 		Date:        time.Now(),
