@@ -94,12 +94,12 @@ func (s *Signer) serializeSignedMessage(i *Input) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (s *Signer) sign(i *Input) ([]byte, error) {
+func (s *Signer) Sign(i *Input) ([]byte, error) {
 	r := s.Rand
 	if r == nil {
 		r = rand.Reader
 	}
-	alg, err := signerForPrivateKey(s.PrivKey, r)
+	alg, err := SigningAlgorithmForPrivateKey(s.PrivKey, r)
 	if err != nil {
 		return nil, err
 	}
@@ -109,11 +109,11 @@ func (s *Signer) sign(i *Input) ([]byte, error) {
 		return nil, err
 	}
 
-	return alg.sign(msg)
+	return alg.Sign(msg)
 }
 
 func (s *Signer) signatureHeaderValue(i *Input) (string, error) {
-	sig, err := s.sign(i)
+	sig, err := s.Sign(i)
 	if err != nil {
 		return "", err
 	}
