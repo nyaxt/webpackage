@@ -1,6 +1,9 @@
 LIBDIR := lib
 include $(LIBDIR)/main.mk
 
+cnote-draft-yasskin-http-origin-signed-responses.html: draft-yasskin-http-origin-signed-responses.html cnote-footer.html
+	cat draft-yasskin-http-origin-signed-responses.html cnote-footer.html > $@
+
 $(LIBDIR)/main.mk:
 ifneq (,$(shell git submodule status $(LIBDIR) 2>/dev/null))
 	git submodule sync

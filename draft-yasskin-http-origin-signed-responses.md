@@ -128,6 +128,8 @@ As a response to an HTTP request or as a Server Push (Section 8.2 of
 fields and a `Signature` header field ({{signature-header}}) holding a list of
 one or more parameterised signatures that vouch for the content of the response.
 
+CNOTE Chrome ToT currently only implements signed exchange as a response to an HTTP request, and does not support Server Push-ed exchange.
+
 The client categorizes each signature as "valid" or "invalid" by validating that
 signature with its certificate or public key and other metadata against the
 significant headers and content ({{signature-validity}}). This validity then
@@ -174,6 +176,8 @@ one accompanied by information about how to determine the authority of and
 refresh that signature. Each signature directly signs the significant headers of
 the exchange and identifies one of those headers that enforces the integrity of
 the exchange's payload.
+
+CNOTE Chrome ToT currently expects that there is only one signature in an exchange.
 
 The `Signature` header is a Structured Header as defined by
 {{!I-D.ietf-httpbis-header-structure}}. Its value MUST be a list (Section 4.8 of
@@ -433,6 +437,8 @@ actually invalid due to an expired OCSP response MAY retry with `forceFetch` set
 to retrieve an updated OCSP from the original server.
 {:#force-fetch}
 
+CNOTE Chrome ToT currently does not implement OCSP verification.
+
 This algorithm also accepts an `allResponseHeaders` flag, which insists that
 there are no non-significant response header fields in the exchange.
 
@@ -535,6 +541,10 @@ there are no non-significant response header fields in the exchange.
    is present of `certificate-chain` or `ed25519Key`. Otherwise, return
    "invalid".
 
+CNOTE Chrome ToT currently only implements the "MI" header field.
+
+CNOTE Chrome ToT currently only implements RSA 2048 bit public key verification and requires certUrl to be present.
+
 Note that the above algorithm can determine that an exchange's headers are
 potentially-valid before the exchange's payload is received. Similarly, if
 `integrity` identifies a header field like `MI` ({{?I-D.thomson-http-mice}})
@@ -565,6 +575,8 @@ including a newer OCSP response.
 The ["validityUrl" parameter](#signature-validityurl) of the signatures provides
 a way to fetch new signatures or learn where to fetch a complete updated
 exchange.
+
+CNOTE Chrome ToT currently ignores "validityUrl" parameter but its usage in checking [signature validity](#signature-validity).
 
 Each version of a signed exchange SHOULD have its own validity URLs, since each
 version needs different signatures and becomes obsolete at different times.
@@ -705,6 +717,8 @@ defined by future specifications.
 
 ### Integrity labels ### {#accept-signature-integrity}
 
+CNOTE Chrome ToT currently lacks support for Accept-Signature header.
+
 Labels starting with "digest/" indicate that the client supports the `Digest`
 header field ({{!RFC3230}}) with the digest-algorithm from the
 <https://www.iana.org/assignments/http-dig-alg/http-dig-alg.xhtml> registry
@@ -806,6 +820,8 @@ Is `Accept-Signature` the right spelling, or do we want to imitate `Want-Digest`
 Do I have the right structure for the labels indicating feature support?
 
 # HTTP/2 extension for cross-origin Server Push # {#cross-origin-push}
+
+CNOTE Chrome ToT currently lacks support for cross-origin HTTP/2 Server Push.
 
 To allow servers to Server-Push (Section 8.2 of {{?RFC7540}}) signed exchanges
 ({{proposal}}) signed by an authority for which the server is not authoritative
@@ -935,6 +951,8 @@ values:
 : A byte string ({{!RFC7049}}, section 2.1) containing the request payload body
   (Section 3.3 of {{!RFC7230}}).
 
+CNOTE Chrome ToT currently lacks support for "request payload".
+
 "response"
 
 : A map from response header field names to values, encoded as byte strings
@@ -953,6 +971,8 @@ values:
 
 : A map of trailer header field names to values, encoded as byte strings
   (Section 2.1 of {{!RFC7049}}).
+
+CNOTE Chrome ToT currently lacks support for "trailer".
 
 A parser MAY return incremental information while parsing
 `application/http-exchange+cbor` content.
@@ -974,6 +994,8 @@ error.
 
 If the parser encounters an unknown member name, it MUST skip the following item
 and resume parsing at the next member name.
+
+CNOTE Chrome ToT currently emits error on an unknown member name.
 
 ## Example ## {#example-application-http-exchange}
 

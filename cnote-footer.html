@@ -1,0 +1,20 @@
+<style>
+.cnote {
+  margin-left: 15px;
+  border-left: 5px solid #666666;
+  padding: 5px;
+  background-color: #ffcccc;
+  font-weight: bold;
+}
+</style>
+<script>
+for (let p of document.querySelectorAll('p')) {
+  console.log(p);
+  let origHTML = p.innerHTML;
+  let m = /^CNOTE (.*)/.exec(origHTML);
+  if (m) {
+    p.classList.add("cnote");
+    p.innerHTML = m[1]; 
+  }
+}
+</script>
