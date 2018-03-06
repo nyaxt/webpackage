@@ -17,6 +17,12 @@ author:
     email: jyasskin@chromium.org
 
 informative:
+  ISO28500:
+    date: 2017
+    target: "https://www.iso.org/standard/68004.html"
+    title: "WARC file format"
+    seriesinfo:
+      ISO: "28500:2017"
   JAR:
     date: 2014
     target: "https://docs.oracle.com/javase/7/docs/technotes/guides/jar/jar.html"
@@ -84,19 +90,25 @@ including a Service Worker from origin `O`, and transmit it to their peer Bailey
 and then Bailey can install the Service Worker with a proof that it came from `O`.
 This saves Bailey the bandwidth costs of transferring the website.
 
-Associated requirements:
+There are roughly two ways to accomplish this:
 
-* {{urls}}{:format="title"}: Resources on the web are addressed by URL.
-* {{request-headers}}{:format="title"}: If Bailey's running a different browser
-  from Alex or has a different language configured, the `accept*` headers are
-  important for selecting which resource to use at each URL.
-* {{response-headers}}{:format="title"}: The meaning of a resource is heavily
-  influenced by its HTTP response headers.
+1. Package just the Service Worker Javascript and any other Javascript that it
+   [importScripts()](https://w3c.github.io/ServiceWorker/#importscripts), with
+   their URLs and enough metadata to synthesize a
+   [navigator.serviceWorker.register(scriptURL, options)
+   call](https://w3c.github.io/ServiceWorker/#navigator-service-worker-register),
+   along with an uninterpreted but signature-checked blob of data that the
+   Service Worker can interpret to fill in its caches.
+1. Package the resources so that the Service Worker can fetch() them to populate
+   its cache.
+
+Associated requirements for just the Service Worker:
+
+* {{urls}}{:format="title"}: The `register()` and `importScripts()` calls have
+  semantics that depend on the URL.
 * {{signing}}{:format="title"}: To prove that the file came from `O`.
 * {{existing-certs}}{:format="title"}: So `O` doesn't have to spend lots of
   money buying a specialized certificate.
-* {{multiple-origins}}{:format="title"}: So the site can
-  be [built from multiple components](#libraries).
 * {{crypto-agility}}{:format="title"}: Today's algorithms will eventually be
   obsolete and will need to be replaced.
 * {{revocation}}{:format="title"}: `O`'s certificate might be compromised or
@@ -105,6 +117,19 @@ Associated requirements:
 * {{no-downgrades}}{:format="title"}: `O`'s site might have an XSS
   vulnerability, and attackers with an old signed package shouldn't be able to
   take advantage of the XSS forever.
+* {{metadata}}{:format="title"}: Just enough to generate the `register()` call,
+  which is less than a full W3C Application Manifest.
+
+Additional associated requirements for packaged resources:
+
+* {{urls}}{:format="title"}: Resources on the web are addressed by URL.
+* {{request-headers}}{:format="title"}: If Bailey's running a different browser
+  from Alex or has a different language configured, the `accept*` headers are
+  important for selecting which resource to use at each URL.
+* {{response-headers}}{:format="title"}: The meaning of a resource is heavily
+  influenced by its HTTP response headers.
+* {{multiple-origins}}{:format="title"}: So the site can
+  be [built from multiple components](#libraries).
 * {{metadata}}{:format="title"}: The browser needs to know which resource within
   a package file to treat as its Service Worker and/or initial HTML page.
 
@@ -132,6 +157,10 @@ origin, save it to transferrable storage (e.g. an SD card), and hand it to their
 peer Bailey. Then Bailey can browse the website with a proof that it came from
 `O`. Bailey may not have the storage space to copy the website before browsing
 it.
+
+This use case is harder for publishers to support if we specialize
+{{offline-installation}} for Service Workers since it requires the publisher to
+adopt Service Workers before they can sign their site.
 
 Associated requirements beyond {{offline-installation}}{:format="title"}:
 
@@ -206,11 +235,39 @@ Other requirements are similar to those from
   compromised or mis-issued, and an attacker shouldn't then get an infinite
   ability to mint packages.
 
+### Avoiding Censorship {#anti-censorship}
+
+Some users want to retrieve resources that their governments or network
+providers don't want them to see. Right now, it's straightforward for someone in
+a privileged network position to block access to particular hosts, but TLS makes
+it difficult to block access to particular resources on those hosts.
+
+Today it's straightforward to retrieve blocked content from a third party, but
+there's no guarantee that the third-party has sent the user an accurate
+representation of the content: the user has to trust the third party.
+
+With signed web packages, the user can re-gain assurance that the content is
+authentic, while still bypassing the censorship. Packages don't do anything to
+help discover this content.
+
+Systems that make censorship more difficult can also make legitimate content
+filtering more difficult. Because the client that processes a web package always
+knows the true URL, this forces content filtering to happen on the client
+instead of on the network.
+
+Associated requirements:
+
+* {{urls}}{:format="title"}: So the user can see that they're getting the
+  content they expected.
+* {{signing}}{:format="title"}: So that readers can be sure their copy is
+  authentic and so that copying the package preserves the URLs of the content
+  inside it.
+
 ### Third-party security review {#security-review}
 
 Some users may want to grant certain permissions only to applications that have
 been reviewed for security by a trusted third party. These third parties could
-provide guarantees similar to those provided by the iOS, Android, or ChromeOS
+provide guarantees similar to those provided by the iOS, Android, or Chrome OS
 app stores, which might allow browsers to offer more powerful capabilities than
 have been deemed safe for unaudited websites.
 
@@ -221,7 +278,7 @@ received.
 
 Associated requirements:
 
-* {{cross-signatures}}{:format="title"}
+* {{additional-signatures}}{:format="title"}
 
 ### Building packages from multiple libraries {#libraries}
 
@@ -252,34 +309,67 @@ Associated requirements:
 
 * {{external-dependencies}}{:format="title"}
 
-### Content Distributors {#content-distributors}
+### Privacy-preserving prefetch {#private-prefetch}
 
-Content distributors want to re-publish other origins' content so readers can
-access it more quickly or more privately. Currently, to attribute that content
-to the original origin, they need to be full CDNs with the ability to publish
-arbitrary content under that origin's name. There should be a way to let them
-attribute only the exact content that the original origin published.
+Lots of websites link to other websites. Many of these source sites would like
+the targets of these links to load quickly. The source could use `<link
+rel="prefetch">` to prefetch the target of a link, but if the user doesn't
+actually click that link, that leaks the fact that the user saw a page that
+linked to the target. This can be true even if the prefetch is made without
+browser credentials because of mechanisms like TLS session IDs.
 
-Web Packages would allow distributors to publish another site's signed content
-as long as the user visited a URL explicitly mentioning the distributor.
+Because clients have limited data budgets to prefetch link targets, this use
+case is probably limited to sites that can accurately predict which link their
+users are most likely to click. For example, search engines can predict that
+their users will click one of the first couple results, and news aggreggation
+sites like Reddit or Slashdot can hope that users will read the article if
+they've navigated to its discussion.
 
-Content distributors want to serve only the bytes that most optimally represent
-the content the current user needs, even though the origin needs to provide
-representations for all users. Think PNG vs WebP and small vs large resolutions.
+Two search engines have built systems to do this with today's technology:
+Google's [AMP](https://www.ampproject.org/) and Baidu's
+[MIP](https://www.mipengine.org/) formats and caches allow them to prefetch
+search results while preserving privacy, at the cost of showing the wrong URLs
+for the results once the user has clicked. A good solution to this problem would
+show the right URLs but still avoid a request to the publishing origin until
+after the user clicks.
 
-This use case is also addressed by
-{{?I-D.yasskin-http-origin-signed-responses}}.
+Associated requirements:
+
+* {{signing}}{:format="title"}: To prove the content came from the original
+  origin.
+* {{streamed-loading}}{:format="title"}: If the user clicks before the target
+  page is fully transferred, the browser should be able to start loading early
+  parts before the source site finishes sending the whole page.
+* {{transfer-compression}}{:format="title"}
+* {{subsetting}}{:format="title"}: If a prefetched page includes subresources,
+  its publisher might want to provide and sign both WebP and PNG versions of an
+  image, but the source site should be able to transfer only best one for each
+  client.
+
+### Cross-CDN Serving {#cross-cdn-serving}
+
+When a web page has subresources from a different origin, retrieval of those
+subresources can be optimized if they're transferred over the same connection as
+the main resource. If both origins are distributed by the same CDN, in-progress
+mechanisms like {{?I-D.ietf-httpbis-http2-secondary-certs}} allow the server to
+use a single connection to send both resources, but if the resource and
+subresource don't share a CDN or don't use a CDN at all, existing mechanisms
+don't help.
+
+If the subresource is signed by its publisher, the main resource's server can
+forward it to the client.
+
+There are some yet-to-be-solved privacy problems if the client and server want
+to avoid transferring subresources that are already in the client's cache:
+naively telling the server that a resource is already present is a privacy leak.
 
 Associated requirements:
 
 * {{streamed-loading}}{:format="title"}: To get optimal performance, the browser
-  should be able to start loading early resources before the distributor
-  finishes sending the whole package.
+  should be able to start loading early parts of a resource before the
+  distributor finishes sending the whole resource.
 * {{signing}}{:format="title"}: To prove the content came from the original
   origin.
-* {{subsetting}}{:format="title"}: If a package includes both WebP and PNG
-  versions of an image, the distributor should be able to select the best one to
-  send to each client.
 * {{transfer-compression}}{:format="title"}
 
 ### Installation from a self-extracting executable {#self-extracting}
@@ -340,6 +430,30 @@ Associated requirements:
   load JS and CSS.
 * {{unsigned-content}}{:format="title"}: Signing same-origin content wastes
   space.
+
+### Archival {#archival}
+
+Existing formats like WARC ({{ISO28500}}) do a good job of accurately
+representing the state of a web server at a particular time, but a browser can't
+currently use them to give a person the experience of that website at the time
+it was archived. It's not obvious to the author of this draft that a new
+packaging format is likely to improve on WARC, compared to, for example,
+implementing support for WARC in browsers, but folks who know about archiving
+seem interested, e.g.:
+<https://twitter.com/anjacks0n/status/950861384266416134>.
+
+Because of the time scales involved in archival, any signatures from the
+original host would likely not be trusted anymore by the time the archive is
+viewed, so implementations would need to sandbox the content instead of running
+it on the original origin.
+
+Associated requirements:
+
+* {{urls}}{:format="title"}
+* {{response-headers}}{:format="title"}: To accurately record the server's
+  response.
+* {{unsigned-content}}{:format="title"}: To deal with expired signatures.
+* {{timeshifting}}{:format="title"}
 
 # Requirements {#requirements}
 
@@ -461,7 +575,7 @@ The browser can load a package as it downloads.
 
 This conflicts with ZIP, since ZIP's index is at the end.
 
-### Cross-signatures {#cross-signatures}
+### Additional signatures {#additional-signatures}
 
 Third-parties can vouch for packages by signing them.
 
@@ -521,6 +635,13 @@ The package's length in bytes appears a fixed offset from the end of
 the package.
 
 This conflicts with {{MHTML}}.
+
+### Time-shifting execution {#timeshifting}
+
+In some unsigned packages, Javascript time-telling functions should return the
+timestamp of the package, rather than the true current time.
+
+We should explore if this has security implications.
 
 # Non-goals
 
@@ -612,3 +733,5 @@ This document has no actions for IANA.
 
 # Acknowledgements
 
+Thanks to Yoav Weiss for the Subresource bundling use case and discussions about
+content distributors.

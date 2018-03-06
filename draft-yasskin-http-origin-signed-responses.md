@@ -41,6 +41,34 @@ normative:
     date: 2016
 
 informative:
+  DROWN:
+    target: https://drownattack.com/
+    title: The DROWN Attack
+    author:
+      - name: Nimrod Aviram
+      - name: Sebastian Schinzel
+      - name: Juraj Somorovsky
+      - name: Nadia Heninger
+      - name: Maik Dankel
+      - name: Jens Steube
+      - name: Luke Valenta
+      - name: David Adrian
+      - name: J. Alex Halderman
+      - name: Viktor Dukhovni
+      - name: Emilia Käsper
+      - name: Shaanan Cohney
+      - name: Susanne Engels
+      - name: Christof Paar
+      - name: Yuval Shavitt
+    date: 2016
+  ROBOT:
+    target: https://robotattack.org/
+    title: The ROBOT Attack
+    author:
+      - name: Hanno Böck
+      - name: Juraj Somorovsky
+      - name: Craig Young
+    date: 2017
   SRI: W3C.REC-SRI-20160623
 
 --- abstract
@@ -122,17 +150,17 @@ appear in all capitals, as shown here.
 
 # Signing an exchange # {#proposal}
 
-As a response to an HTTP request or as a Server Push (Section 8.2 of
-{{!RFC7540}}) the server MAY include a `Signed-Headers` header field
-({{signed-headers}}) identifying [significant](#significant-headers) header
-fields and a `Signature` header field ({{signature-header}}) holding a list of
-one or more parameterised signatures that vouch for the content of the response.
+In the response of an HTTP exchange the server MAY include a `Signature` header
+field ({{signature-header}}) holding a list of one or more parameterised
+signatures that vouch for the content of the exchange. Exactly which content the
+signature vouches for can depend on how the exchange is transferred
+({{transfer}}).
 
 CNOTE Chrome ToT currently only implements signed exchange as a response to an HTTP request, and does not support Server Push-ed exchange.
 
 The client categorizes each signature as "valid" or "invalid" by validating that
 signature with its certificate or public key and other metadata against the
-significant headers and content ({{signature-validity}}). This validity then
+exchange's headers and content ({{signature-validity}}). This validity then
 informs higher-level protocols.
 
 Each signature is parameterised with information to let a client fetch assurance
@@ -141,41 +169,13 @@ newly-discovered vulnerabilities. This assurance can be bundled back into the
 signed exchange and forwarded to another client, which won't have to re-fetch
 this validity information for some period of time.
 
-## The Signed-Headers Header ## {#signed-headers}
-
-The `Signed-Headers` header field identifies an ordered list of response header
-fields to include in a signature. The request URL and response status are
-included unconditionally. This allows a TLS-terminating intermediate to reorder
-headers without breaking the signature. This *can* also allow the intermediate
-to add headers that will be ignored by some higher-level protocols, but
-{{signature-validity}} provides a hook to let other higher-level protocols
-reject such insecure headers.
-
-This header field appears once instead of being incorporated into the
-signatures' parameters because the significant header fields need to be
-consistent across all signatures of an exchange, to avoid forcing higher-level
-protocols to merge the header field lists of valid signatures.
-
-See {{how-much-to-sign}} for a discussion of why only the URL from the request
-is included and not other request headers.
-
-`Signed-Headers` is a Structured Header as defined by
-{{!I-D.ietf-httpbis-header-structure}}. Its value MUST be a list (Section 4.8 of
-{{!I-D.ietf-httpbis-header-structure}}) of lowercase strings (Section 4.2 of
-{{!I-D.ietf-httpbis-header-structure}}) naming HTTP response header fields.
-Pseudo-header field names (Section 8.1.2.1 of {{!RFC7540}}) MUST NOT appear in
-this list.
-
-Higher-level protocols SHOULD place requirements on the minimum set of headers
-to include in the `Signed-Headers` header field.
-
 ## The Signature Header ## {#signature-header}
 
 The `Signature` header field conveys a list of signatures for an exchange, each
 one accompanied by information about how to determine the authority of and
-refresh that signature. Each signature directly signs the significant headers of
-the exchange and identifies one of those headers that enforces the integrity of
-the exchange's payload.
+refresh that signature. Each signature directly signs the exchange's headers and
+identifies one of those headers that enforces the integrity of the exchange's
+payload.
 
 CNOTE Chrome ToT currently expects that there is only one signature in an exchange.
 
@@ -194,8 +194,7 @@ present parameters MUST have the following values:
 "sig"
 
 : Binary content (Section 4.5 of {{!I-D.ietf-httpbis-header-structure}}) holding
-  the signature of most of these parameters and the significant headers of the
-  exchange ({{significant-headers}}).
+  the signature of most of these parameters and the exchange's headers.
 
 "integrity"
 
@@ -309,29 +308,6 @@ cache without losing the original URLs? Putting lists in dictionary fields is
 more complex than {{?I-D.ietf-httpbis-header-structure}} allows, so they're
 single items for now.
 
-
-## Significant headers of an exchange ## {#significant-headers}
-
-The significant headers of an exchange are:
-
-* The method (Section 4 of {{!RFC7231}}) and effective request URI (Section 5.5
-  of {{!RFC7230}}) of the request.
-* The response status code (Section 6 of {{!RFC7231}}) and the response header
-  fields whose names are listed in that exchange's `Signed-Headers` header field
-  ({{signed-headers}}), in the order they appear in that header field. If a
-  response header field name from `Signed-Headers` does not appear in the
-  exchange's response header fields, the exchange has no significant headers.
-
-If the exchange's `Signed-Headers` header field is not present, doesn't parse as
-a Structured Header ({{!I-D.ietf-httpbis-header-structure}}) or doesn't follow
-the constraints on its value described in {{signed-headers}}, the exchange has
-no significant headers.
-
-### Open Questions ### {#oq-significant-headers}
-
-Do the significant headers of an exchange need to include the `Signed-Headers`
-header field itself?
-
 ## CBOR representation of exchange headers ## {#cbor-representation}
 
 To sign an exchange's headers, they need to be serialized into a byte string.
@@ -349,6 +325,8 @@ The CBOR representation of an exchange `exchange`'s headers is the CBOR
      request's method.
    * The byte string ':url' to the byte string containing `exchange`'s request's
      effective request URI.
+   * For each request header field in `exchange`, the header field's name as a
+     byte string to the header field's value as a byte string.
 1. The map mapping:
    * the byte string ':status' to the byte string containing `exchange`'s
      response's 3-digit status code, and
@@ -390,6 +368,52 @@ extended diagnostic notation from {{?I-D.ietf-cbor-cddl}} appendix G:
 ]
 ~~~
 
+## Loading a certificate chain ## {#cert-chain-format}
+
+The resource at a signature's `certUrl` MUST have the
+`application/cert-chain+cbor` content type, MUST be canonically-encoded CBOR
+({{canonical-cbor}}), and MUST match the following CDDL:
+
+~~~cddl
+cert-chain = [
+  "📜⛓", ; U+1F4DC U+26D3
+  + {
+    cert: bytes,
+    ? ocsp: bytes,
+    ? sct: bytes,
+    * tstr => any,
+  }
+]
+~~~
+
+The first item in the CBOR array is treated as the end-entity certificate, and
+the client will attempt to build a path ({{?RFC5280}}) to it from a trusted root
+using the other certificates in the chain.
+
+1. Each `cert` value MUST be a DER-encoded X.509v3 certificate ({{!RFC5280}}).
+   Other key/value pairs in the same array item define properties of this
+   certificate.
+1. The first certificate's `ocsp` value if any MUST be a complete, DER-encoded
+   OCSP response for that certificate (using the ASN.1 type `OCSPResponse`
+   defined in {{!RFC2560}}). Subsequent certificates MUST NOT have an `ocsp`
+   value.
+1. Each certificate's `sct` value MUST be a `SignedCertificateTimestampList` for
+   that certificate as defined by Section 3.3 of {{!RFC6962}}.
+
+Loading a `certUrl` takes a `forceFetch` flag. The client MUST:
+
+1. Let `raw-chain` be the result of fetching ({{FETCH}}) `certUrl`. If
+   `forceFetch` is *not* set, the fetch can be fulfilled from a cache using
+   normal HTTP semantics {{!RFC7234}}. If this fetch fails, return
+   "invalid".
+1. Let `certificate-chain` be the array of certificates and properties produced
+   by parsing `raw-chain` using the CDDL above. If any of the requirements above
+   aren't satisfied, return "invalid". Note that this validation requirement
+   might be impractical to completely achieve due to certificate validation
+   implementations that don't enforce DER encoding or other standard
+   constraints.
+1. Return `certificate-chain`.
+
 ## Canonical CBOR serialization ## {#canonical-cbor}
 
 Within this specification, the canonical serialization of a CBOR item uses the
@@ -423,8 +447,8 @@ signatures. Otherwise, each member of this list represents a signature with
 parameters.
 
 The client MUST use the following algorithm to determine whether each signature
-with parameters is invalid or potentially-valid. Potentially-valid results
-include:
+with parameters is invalid or potentially-valid for an `exchange`.
+Potentially-valid results include:
 
 * The signed headers of the exchange so that higher-level protocols can avoid
   relying on unsigned headers, and
@@ -439,19 +463,9 @@ to retrieve an updated OCSP from the original server.
 
 CNOTE Chrome ToT currently does not implement OCSP verification.
 
-This algorithm also accepts an `allResponseHeaders` flag, which insists that
-there are no non-significant response header fields in the exchange.
-
-1. Let `originalExchange` be the signature's exchange.
-1. Let `headers` be the significant headers ({{significant-headers}}) of
-   `originalExchange`. If `originalExchange` has no significant headers, then
-   return "invalid".
 1. Let `payload` be the payload body (Section 3.3 of {{!RFC7230}}) of
-   `originalExchange`. Note that the payload body is the message body with any
-   transfer encodings removed.
-1. If `allResponseHeaders` is set and the response header fields in
-   `originalExchange` are not equal to the response header fields in `headers`,
-   then return "invalid".
+   `exchange`. Note that the payload body is the message body with any transfer
+   encodings removed.
 1. Let:
    * `signature` be the signature (binary content in the parameterised label's
      "sig" parameter).
@@ -463,45 +477,30 @@ there are no non-significant response header fields in the exchange.
    * `date` be the signature's "date" parameter, interpreted as a Unix time.
    * `expires` be the signature's "expires" parameter, interpreted as a Unix
      time.
-1. If `integrity` names a header field that is not present in `headers` or which
-   the client cannot use to check the integrity of `payload` (for example, the
-   header field is new and hasn't been implemented yet), then return "invalid".
-   Clients MUST implement at least the `Digest` ({{!RFC3230}}) and `MI`
-   ({{!I-D.thomson-http-mice}}) header fields.
-1. If `integrity` is "digest", and the `Digest` header field in `headers`
-   contains no digest-algorithms
+1. If `integrity` names a header field that is not present in `exchange`'s
+   response headers or which the client cannot use to check the integrity of
+   `payload` (for example, the header field is new and hasn't been implemented
+   yet), then return "invalid". Clients MUST implement at least the `Digest`
+   ({{!RFC3230}}) and `MI` ({{!I-D.thomson-http-mice}}) header fields.
+1. If `integrity` is "digest", and the `Digest` header field in `exchange`'s
+   response headers contains no digest-algorithms
    (<https://www.iana.org/assignments/http-dig-alg/http-dig-alg.xhtml>) stronger
    than `SHA`, then return "invalid".
 1. Set `publicKey` and `signing-alg` depending on which key fields are present:
    1. If `certUrl` is present:
-      1. Let `certificate-chain` be the result of fetching ({{FETCH}}) `certUrl`
-         and parsing it as a TLS 1.3 Certificate message (Section 4.4.2 of
-         {{!I-D.ietf-tls-tls13}}) containing X.509v3 certificates. If
-         `forceFetch` is *not* set, the fetch can be fulfilled from a cache
-         using normal HTTP semantics {{!RFC7234}}. If this fetch or parse fails,
-         return "invalid".
-
-         Parsing notes:
-         1. This does not include the 4-byte header that would appear in a
-            Handshake message.
-         1. Since this fetch is not in response to a CertificateRequest, the
-            certificate_request_context MUST be empty, and a non-empty value
-            MUST cause the parse to fail.
+      1. Let `certificate-chain` be the result of loading the certificate chain
+         at `certUrl` passing the `forceFetch` flag ({{cert-chain-format}}). If
+         this returns "invalid", return "invalid".
       1. Let `main-certificate` be the first certificate in `certificate-chain`.
-      1. If the SHA-256 hash of `main-certificate`'s `cert_data` is not equal to
-         `certSha256`, return "invalid". Note that this intentionally differs
-         from TLS 1.3, which signs the entire certificate chain in its
-         Certificate Verify (Section 4.4.3 of {{?I-D.ietf-tls-tls13}}), in order
-         to allow updating the stapled OCSP response without updating signatures
-         at the same time.
-      1. Set `publicKey` to `main-certificate`'s public key
+      1. Set `publicKey` to `main-certificate`'s public key.
       1. The client MUST define a partial function from public key types to
          signing algorithms, and this function must at the minimum include the
          following mappings:
 
          RSA, 2048 bits:
-         : rsa_pss_sha256 as defined in Section 4.2.3 of
-           {{!I-D.ietf-tls-tls13}}.
+         : rsa_pss_rsae_sha256 or rsa_pss_pss_sha256, as defined in Section
+           4.2.3 of {{!I-D.ietf-tls-tls13}}, depending on which of the
+           rsaEncryption OID or RSASSA-PSS OID {{!RFC8017}} is used.
 
          EC, with the secp256r1 curve:
          : ecdsa_secp256r1_sha256 as defined in Section 4.2.3 of
@@ -511,7 +510,7 @@ there are no non-significant response header fields in the exchange.
          : ecdsa_secp384r1_sha384 as defined in Section 4.2.3 of
            {{!I-D.ietf-tls-tls13}}.
 
-         Set `signing-alg` to the result of applying this function to type of
+         Set `signing-alg` to the result of applying this function to the type of
          `main-certificate`'s public key. If the function is undefined on this
          input, return "invalid".
    1. If `ed25519Key` is present, set `publicKey` to `ed25519Key` and
@@ -519,10 +518,7 @@ there are no non-significant response header fields in the exchange.
 1. If `expires` is more than 7 days (604800 seconds) after `date`, return
    "invalid".
 1. If the current time is before `date` or after `expires`, return "invalid".
-1. Let `message` be the concatenation of the following byte strings. This
-   matches the {{?I-D.ietf-tls-tls13}} format to avoid cross-protocol attacks
-   when TLS certificates are used to sign manifests.
-   1. A string that consists of octet 32 (0x20) repeated 64 times.
+1. Let `message` be the concatenation of the following byte strings:
    1. A context string: the ASCII encoding of “HTTP Exchange”.
    1. A single 0 byte which serves as a separator.
    1. The bytes of the canonical CBOR serialization ({{canonical-cbor}}) of a
@@ -536,10 +532,17 @@ there are no non-significant response header fields in the exchange.
       1. The text string "expires" to the integer value of `expires`.
       1. The text string "headers" to the CBOR representation
          ({{cbor-representation}}) of `exchange`'s headers.
-1. If `signature` is `message`'s signature by `main-certificate`'s public key
-   using `signing-alg`, return "potentially-valid" with `exchange` and whichever
-   is present of `certificate-chain` or `ed25519Key`. Otherwise, return
-   "invalid".
+1. If `certUrl` is present and the SHA-256 hash of `main-certificate`'s
+   `cert_data` is not equal to `certSha256` (whose presence was checked when the
+   `Signature` header field was parsed), return "invalid".
+
+   Note that this intentionally differs from TLS 1.3, which signs the entire
+   certificate chain in its Certificate Verify (Section 4.4.3 of
+   {{?I-D.ietf-tls-tls13}}), in order to allow updating the stapled OCSP
+   response without updating signatures at the same time.
+1. If `signature` is a valid signature of `message` by `publicKey` using
+   `signing-alg`, return "potentially-valid" with whichever is present of
+   `certificate-chain` or `ed25519Key`. Otherwise, return "invalid".
 
 CNOTE Chrome ToT currently only implements the "MI" header field.
 
@@ -560,7 +563,8 @@ valid.
 
 ### Open Questions ### {#oq-signature-validity}
 
-Should we ban RSA keys to avoid their vulnerability to Bleichenbacher attacks?
+Should the signed message use the TLS format (with an initial 64 spaces) even
+though these certificates can't be used in TLS servers?
 
 ## Updating signature validity ## {#updating-validity}
 
@@ -819,7 +823,183 @@ Is `Accept-Signature` the right spelling, or do we want to imitate `Want-Digest`
 
 Do I have the right structure for the labels indicating feature support?
 
-# HTTP/2 extension for cross-origin Server Push # {#cross-origin-push}
+# Cross-origin trust {#cross-origin-trust}
+
+To determine whether to trust a cross-origin exchange, the client takes a
+`Signature` header field ({{signature-header}}) and the `exchange`. The client
+MUST parse the `Signature` header into a list of signatures according to the
+instructions in {{signature-validity}}, and run the following algorithm for each
+signature, stopping at the first one that returns "valid". If any signature
+returns "valid", return "valid". Otherwise, return "invalid".
+
+1. If the signature's ["validityUrl" parameter](#signature-validityurl) is not
+   [same-origin](https://html.spec.whatwg.org/multipage/origin.html#same-origin)
+   with `exchange`'s effective request URI (Section 5.5 of {{!RFC7230}}), return
+   "invalid".
+1. Use {{signature-validity}} to determine the signature's validity for
+   `exchange`, getting `certificate-chain` back. If this returned "invalid" or
+   didn't return a certificate chain, return "invalid".
+1. If `exchange`'s request method is not safe (Section 4.2.1 of {{!RFC7231}}) or
+   not cacheable (Section 4.2.3 of {{!RFC7231}}), return "invalid".
+1. If `exchange`'s headers contain a stateful header field, as defined in
+   {{stateful-headers}}, return "invalid".
+1. Let `authority` be the host component of `exchange`'s effective request URI.
+1. Validate the `certificate-chain` using the following substeps. If any of them
+   fail, re-run {{signature-validity}} once over the signature with the
+   `forceFetch` flag set, and restart from step 2. If a substep fails again,
+   return "invalid".
+   1. Use `certificate-chain` to validate that its first entry,
+      `main-certificate` is trusted as `authority`'s server certificate
+      ({{!RFC5280}} and other undocumented conventions). Let `path` be the path
+      that was used from the `main-certificate` to a trusted root, including the
+      `main-certificate` but excluding the root.
+   1. Validate that `main-certificate` has the CanSignHttpExchanges extension
+      ({{cross-origin-cert-req}}).
+   1. Validate that `main-certificate` has an `ocsp` property
+      ({{cert-chain-format}}) with a valid OCSP response whose lifetime
+      (`nextUpdate - thisUpdate`) is less than 7 days ({{!RFC6960}}). Note that
+      this does not check for revocation of intermediate certificates, and
+      clients SHOULD implement another mechanism for that.
+   1. Validate that `main-certificate` has an `sct` property
+      ({{cert-chain-format}}) containing valid SCTs from trusted logs.
+      ({{!RFC6962}})
+1. Return "valid".
+
+## Stateful header fields {#stateful-headers}
+
+As described in {{seccons-over-signing}}, a publisher can cause problems if they
+sign an exchange that includes private information. There's no way for a client
+to be sure an exchange does or does not include private information, but header
+fields that store or convey stored state in the client are a good sign.
+
+A stateful request header field informs the server of per-client state. These
+include but are not limited to:
+
+* `Authorization`, {{?RFC7235}}
+* `Cookie`, {{?RFC6265}}
+* `Cookie2`, {{?RFC2965}}
+* `Proxy-Authorization`, {{?RFC7235}}
+* `Sec-WebSocket-Key`, {{?RFC6455}}
+
+A stateful response header field modifies state, including authentication
+status, in the client. The HTTP cache is not considered part of this state.
+These include but are not limited to:
+
+* `Authentication-Control`, {{?RFC8053}}
+* `Authentication-Info`, {{?RFC7615}}
+* `Optional-WWW-Authenticate`, {{?RFC8053}}
+* `Proxy-Authenticate`, {{?RFC7235}}
+* `Proxy-Authentication-Info`, {{?RFC7615}}
+* `Sec-WebSocket-Accept`, {{?RFC6455}}
+* `Set-Cookie`, {{?RFC6265}}
+* `Set-Cookie2`, {{?RFC2965}}
+* `SetProfile`, {{?W3C.NOTE-OPS-OverHTTP}}
+* `WWW-Authenticate`, {{?RFC7235}}
+
+## Certificate Requirements {#cross-origin-cert-req}
+
+We define a new X.509 extension, CanSignHttpExchanges to be used in the
+certificate when the certificate permits the usage of signed exchanges.  When
+this extension is not present the client MUST NOT accept a signature from the
+certificate as proof that a signed exchange is authoritative for a domain
+covered by the certificate. When it is present, the client MUST follow the
+validation procedure in {{cross-origin-trust}}.
+
+~~~asn.1
+   id-ce-canSignHttpExchanges OBJECT IDENTIFIER ::= { TBD }
+
+   CanSignHttpExchanges ::= BIT STRING { allowed (0) }
+~~~
+
+Leaf certificates without this extension need to be revoked if the private key
+is exposed to an unauthorized entity, but they generally don't need to be
+revoked if a signing oracle is exposed and then removed.
+
+CA certificates, by contrast, need to be revoked if an unauthorized entity is
+able to make even one unauthorized signature.
+
+Certificates with this extension MUST be revoked if an unauthorized entity is
+able to make even one unauthorized signature.
+
+Conforming CAs MUST mark this extension as critical, and clients MUST NOT accept
+certificates with this extension in TLS connections (Section 4.4.2.2 of
+{{!I-D.ietf-tls-tls13}}).  This prevents accidental signing oracles exposed by
+TLS servers from allowing package signing (e.g. {{DROWN}} and {{ROBOT}}).
+
+# Transferring a signed exchange {#transfer}
+
+A signed exchange can be transferred in several ways, of which three are
+described here.
+
+## Same-origin response {#same-origin-response}
+
+The signature for a signed exchange can be included in a normal HTTP response.
+Because different clients send different request header fields, and intermediate
+servers add response header fields, it can be impossible to have a signature for
+the exact request and response that the client sees. Therefore, when a client
+validates the `Signature` header field for an exchange represented as a normal
+HTTP request/response pair, it MUST pass only the subset of header fields
+defined by {{significant-headers}} to the validation procedure
+({{signature-validity}}).
+
+If the client relies on signature validity for any aspect of its behavior, it
+MUST ignore any header fields that it didn't pass to the validation procedure.
+
+### Significant headers for a same-origin response {#significant-headers}
+
+The significant headers of an exchange represented as a normal HTTP
+request/response pair (Section 2.1 of {{?RFC7230}} or Section 8.1 of
+{{?RFC7540}}) are:
+
+* The method (Section 4 of {{!RFC7231}}) and effective request URI (Section 5.5
+  of {{!RFC7230}}) of the request.
+* The response status code (Section 6 of {{!RFC7231}}) and the response header
+  fields whose names are listed in that exchange's `Signed-Headers` header field
+  ({{signed-headers}}), in the order they appear in that header field. If a
+  response header field name from `Signed-Headers` does not appear in the
+  exchange's response header fields, the exchange has no significant headers.
+
+If the exchange's `Signed-Headers` header field is not present, doesn't parse as
+a Structured Header ({{!I-D.ietf-httpbis-header-structure}}) or doesn't follow
+the constraints on its value described in {{signed-headers}}, the exchange has
+no significant headers.
+
+#### Open Questions {#oq-significant-headers}
+
+Do the significant headers of an exchange need to include the `Signed-Headers`
+header field itself?
+
+### The Signed-Headers Header {#signed-headers}
+
+The `Signed-Headers` header field identifies an ordered list of response header
+fields to include in a signature. The request URL and response status are
+included unconditionally. This allows a TLS-terminating intermediate to reorder
+headers without breaking the signature. This *can* also allow the intermediate
+to add headers that will be ignored by some higher-level protocols, but
+{{signature-validity}} provides a hook to let other higher-level protocols
+reject such insecure headers.
+
+This header field appears once instead of being incorporated into the
+signatures' parameters because the signed header fields need to be consistent
+across all signatures of an exchange, to avoid forcing higher-level protocols to
+merge the header field lists of valid signatures.
+
+See {{how-much-to-sign}} for a discussion of why only the URL from the request
+is included and not other request headers.
+
+`Signed-Headers` is a Structured Header as defined by
+{{!I-D.ietf-httpbis-header-structure}}. Its value MUST be a list (Section 4.8 of
+{{!I-D.ietf-httpbis-header-structure}}) of lowercase strings (Section 4.2 of
+{{!I-D.ietf-httpbis-header-structure}}) naming HTTP response header fields.
+Pseudo-header field names (Section 8.1.2.1 of {{!RFC7540}}) MUST NOT appear in
+this list.
+
+Higher-level protocols SHOULD place requirements on the minimum set of headers
+to include in the `Signed-Headers` header field.
+
+
+
+## HTTP/2 extension for cross-origin Server Push # {#cross-origin-push}
 
 CNOTE Chrome ToT currently lacks support for cross-origin HTTP/2 Server Push.
 
@@ -827,7 +1007,7 @@ To allow servers to Server-Push (Section 8.2 of {{?RFC7540}}) signed exchanges
 ({{proposal}}) signed by an authority for which the server is not authoritative
 (Section 9.1 of {{?RFC7230}}), this section defines an HTTP/2 extension.
 
-## Indicating support for cross-origin Server Push # {#setting}
+### Indicating support for cross-origin Server Push # {#setting}
 
 Clients that might accept signed Server Pushes with an authority for which the
 server is not authoritative indicate this using the HTTP/2 SETTINGS parameter
@@ -848,7 +1028,7 @@ a server were to send a cross-origin Push without first receiving a
 ENABLE_CROSS_ORIGIN_PUSH setting with the value of 1 it would be a protocol
 violation.
 
-## NO_TRUSTED_EXCHANGE_SIGNATURE error code {#error-code}
+### NO_TRUSTED_EXCHANGE_SIGNATURE error code {#error-code}
 
 The signatures on a Pushed cross-origin exchange may be untrusted for several
 reasons, for example that the certificate could not be fetched, that the
@@ -857,11 +1037,11 @@ validate, that the signature is expired, etc. This draft conflates all of these
 possible failures into one error code, NO_TRUSTED_EXCHANGE_SIGNATURE
 (0xERROR-TBD).
 
-### Open Questions ### {#oq-error-code}
+#### Open Questions ### {#oq-error-code}
 
 How fine-grained should this specification's error codes be?
 
-## Validating a cross-origin Push ## {#validating-cross-origin-push}
+### Validating a cross-origin Push ## {#validating-cross-origin-push}
 
 If the client has set the ENABLE_CROSS_ORIGIN_PUSH setting to 1, the server MAY
 Push a signed exchange for which it is not authoritative, and the client MUST
@@ -869,52 +1049,23 @@ NOT treat a PUSH_PROMISE for which the server is not authoritative as a stream
 error (Section 5.4.2 of {{!RFC7540}}) of type PROTOCOL_ERROR, as described in
 Section 8.2 of {{?RFC7540}}.
 
-Instead, the client MUST validate such a PUSH_PROMISE and its response by
-parsing the `Signature` header into a list of signatures according to the
-instructions in {{signature-validity}}, and searching that list for a valid
-signature using the algorithm in {{authority-chain-validation}}. If no valid
-signature is found, the client MUST treat the response as a stream error
-(Section 5.4.2 of {{!RFC7540}}) of type NO_TRUSTED_EXCHANGE_SIGNATURE.
-Otherwise, the client MUST treat the pushed response as if the server were
-authoritative for the PUSH_PROMISE's authority.
+Instead, the client MUST validate such a PUSH_PROMISE and its response by taking
+the `Signature` header field from the response, and the exchange consisting of
+the PUSH_PROMISE and the response without that `Signature` header field, and
+passing them to the algorithm in {{cross-origin-trust}}. If this returns
+"invalid", the client MUST treat the response as a stream error (Section 5.4.2
+of {{!RFC7540}}) of type NO_TRUSTED_EXCHANGE_SIGNATURE. Otherwise, the client
+MUST treat the pushed response as if the server were authoritative for the
+PUSH_PROMISE's authority.
 
-### Validating a certificate chain for an authority ### {#authority-chain-validation}
-
-1. If the signature's ["validityUrl" parameter](#signature-validityurl) is not
-   [same-origin](https://html.spec.whatwg.org/multipage/origin.html#same-origin)
-   with the exchange's effective request URI (Section 5.5 of {{!RFC7230}}),
-   return "invalid".
-1. Run {{signature-validity}} over the signature with the `allResponseHeaders`
-   flag set, getting `exchange` and `certificate-chain` back. If this returned
-   "invalid" or didn't return a certificate chain, return "invalid".
-1. Let `authority` be the host component of `exchange`'s effective request URI.
-1. Validate the `certificate-chain` using the following substeps. If any of them
-   fail, re-run {{signature-validity}} once over the signature with both the
-   `forceFetch` flag and the `allResponseHeaders` flag set, and restart from
-   step 2. If a substep fails again, return "invalid".
-   1. Use `certificate-chain` to validate that its first entry,
-      `main-certificate` is trusted as `authority`'s server certificate
-      ({{!RFC5280}} and other undocumented conventions). Let `path` be the path
-      that was used from the `main-certificate` to a trusted root, including the
-      `main-certificate` but excluding the root.
-   1. Validate that `main-certificate` includes a "status_request" extension
-      with a valid OCSP response whose lifetime (`nextUpdate - thisUpdate`) is
-      less than 7 days ({{!RFC6960}}). Note that this does not check for
-      revocation of intermediate certificates, and clients SHOULD implement
-      another mechanism for that.
-   1. Validate that all certificates in `path` include
-      "signed_certificate_timestamp" extensions containing valid SCTs from
-      trusted logs. ({{!RFC6962}})
-1. Return "valid".
-
-### Open Questions ### {#oq-cross-origin-push}
+#### Open Questions ### {#oq-cross-origin-push}
 
 Is it right that "validityUrl" is required to be same-origin with the exchange?
 This allows the mitigation against downgrades in {{seccons-downgrades}}, but
 prohibits intermediates from providing a cache of the validity information. We
 could do both with a list of URLs.
 
-# application/http-exchange+cbor format for HTTP/1 compatibility # {#application-http-exchange}
+## application/http-exchange+cbor format for HTTP/1 compatibility # {#application-http-exchange}
 
 To allow servers to serve cross-origin responses when either the client or the
 server hasn't implemented HTTP/2 Push (Section 8.2 of {{?RFC7540}}) support yet,
@@ -997,7 +1148,7 @@ and resume parsing at the next member name.
 
 CNOTE Chrome ToT currently emits error on an unknown member name.
 
-## Example ## {#example-application-http-exchange}
+### Example ## {#example-application-http-exchange}
 
 An example `application/http-exchange+cbor` file representing a possible
 exchange with <https://example.com/> follows, in the extended diagnostic format
@@ -1022,7 +1173,7 @@ defined in Appendix G of {{?I-D.ietf-cbor-cddl}}:
 ]
 ~~~
 
-## Open Questions ## {#oq-application-http-exchange}
+### Open Questions ## {#oq-application-http-exchange}
 
 Should `application/http-exchange+cbor` support request payloads and trailers,
 or only the aspects needed for signed exchanges?
@@ -1031,11 +1182,48 @@ Are the mime type, extension, and magic number right?
 
 # Security considerations
 
-## Confidential data ## {#seccons-confidentiality}
+## Over-signing ## {#seccons-over-signing}
 
-Authors MUST NOT include confidential information in a signed response that an
-untrusted intermediate could forward, since the response is only signed and not
-encrypted. Intermediates can read the content.
+If a publisher blindly signs all responses as their origin, they can cause at
+least two kinds of problems, described below. To avoid this, publishers SHOULD
+design their systems to opt particular public content that doesn't depend on
+authentication status into signatures instead of signing by default.
+
+Signing systems SHOULD also incorporate the following mitigations to reduce the
+risk that private responses are signed:
+
+1. Strip the `Cookie` request header field and other identifying information
+   like client authentication and TLS session IDs from requests whose exchange
+   is destined to be signed, before forwarding the request to a backend.
+1. Only sign exchanges where the response includes a `Cache-Control: public`
+   header. Clients are not required to fail signature-checking for exchanges
+   that omit this `Cache-Control` response header field to reduce the risk that
+   naïve signing systems blindly add it.
+
+### Session fixation ### {#seccons-session-fixation}
+
+Blind signing can sign responses that create session cookies or otherwise change
+state on the client to identify a particular session. This breaks certain kinds
+of CSRF defense and can allow an attacker to force a user into the attacker's
+account, where the user might unintentionally save private information, like
+credit card numbers or addresses.
+
+This specification defends against cookie-based attacks by blocking the
+`Set-Cookie` response header, but it cannot prevent Javascript or other response
+content from changing state.
+
+### Misleading content ### {#seccons-misleading-content}
+
+If a site signs private information, an attacker might set up their own account
+to show particular private information, forward that signed information to a
+victim, and use that victim's confusion in a more sophisticated attack.
+
+Stripping authentication information from requests before sending them to
+backends is likely to prevent the backend from showing attacker-specific
+information in the signed response. It does not prevent the attacker from
+showing their victim a signed-out page when the victim is actually signed in,
+but while this is still misleading, it seems less likely to be useful to the
+attacker.
 
 ## Off-path attackers ## {#seccons-off-path}
 
@@ -1065,7 +1253,7 @@ same-origin requirement).
 
 An attacker with temporary access to a signing oracle can sign "still valid"
 assertions with arbitrary timestamps and expiration times. As a result, when a
-signing oracle is removed, the keys it provided access to SHOULD be revoked so
+signing oracle is removed, the keys it provided access to MUST be revoked so
 that, even if the attacker used them to sign future-dated exchange validity
 assertions, the key's OCSP assertion will expire, causing the exchange as a
 whole to become untrusted.
@@ -1095,9 +1283,10 @@ Sleevi's recommendation.
 Clients MUST NOT trust an effective request URI claimed by an
 `application/http-exchange+cbor` resource ({{application-http-exchange}})
 without either ensuring the resource was transferred from a server that was
-authoritative (Section 9.1 of {{!RFC7230}}) for that URI's origin, or validating
-the resource's signature using a procedure like the one described in
-{{authority-chain-validation}}.
+authoritative (Section 9.1 of {{!RFC7230}}) for that URI's origin, or passing
+the `Signature` response header field from the exchange stored in the resource,
+and that exchange without its `Signature` response header field, to the
+procedure in {{cross-origin-trust}}, and getting "valid" back.
 
 # Privacy considerations
 
@@ -1200,6 +1389,49 @@ Additional information:
   Magic number(s):  8? 64 68 74 78 67
 
   File extension(s): .htxg
+
+  Macintosh file type code(s):  N/A
+
+Person and email address to contact for further information: See Authors'
+  Addresses section.
+
+Intended usage:  COMMON
+
+Restrictions on usage:  N/A
+
+Author:  See Authors' Addresses section.
+
+Change controller:  IESG
+
+## Internet Media Type application/cert-chain+cbor
+
+Type name:  application
+
+Subtype name:  cert-chain+cbor
+
+Required parameters:  N/A
+
+Optional parameters:  N/A
+
+Encoding considerations:  binary
+
+Security considerations:  N/A
+
+Interoperability considerations:  N/A
+
+Published specification:  This specification (see {{cert-chain-format}}).
+
+Applications that use this media type:  N/A
+
+Fragment identifier considerations:  N/A
+
+Additional information:
+
+  Deprecated alias names for this type:  N/A
+
+  Magic number(s): 1*9(??) 67 F0 9F 93 9C E2 9B 93
+
+  File extension(s): N/A
 
   Macintosh file type code(s):  N/A
 
@@ -1344,22 +1576,18 @@ If we re-use existing TLS server certificates, we incur the risks that:
 2. A server using an origin-trusted key for one purpose (e.g. TLS) might
    accidentally sign something that looks like an exchange, or vice versa.
 
-If these risks are too high, we could define a new Extended Key Usage (Section
-4.2.1.12 of {{?RFC5280}}) that requires CAs to issue new keys for this purpose
-or a new certificate extension to do the same. A new EKU would probably require
-CAs to also issue new intermediate certificates because of how browsers trust
-EKUs. Both an EKU and a new extension take a long time to deploy and allow CAs
-to charge exchange-signers more than normal server operators, which will reduce
-adoption.
-
-The rest of this document assumes we can re-use existing TLS server
-certificates.
+These risks are considered too high, so we define a new X.509 certificate
+extension in {{cross-origin-cert-req}} that requires CAs to issue new
+certificates for this purpose. We expect at least one low-cost CA to be willing
+to sign certificates with this extension.
 
 ### Signature constraints
 
 In order to prevent an attacker who can convince the server to sign some
-resource from causing those signed bytes to be interpreted as something else,
-signatures here need to:
+resource from causing those signed bytes to be interpreted as something else the
+new X.509 extension here is forbidden from being used in TLS servers. If
+{{cross-origin-cert-req}} changes to allow re-use in TLS servers, we would need
+to:
 
 1. Avoid key types that are used for non-TLS protocols whose output could be
    confused with a signature. That may be just the `rsaEncryption` OID from
@@ -1589,6 +1817,20 @@ exchange argues for embedding a signature's lifetime into the signature.
 # Change Log
 
 RFC EDITOR PLEASE DELETE THIS SECTION.
+
+draft-03
+
+* Allow each method of transferring an exchange to define which headers are
+  signed, have the cross-origin methods use all headers, and remove the
+  `allResponseHeaders` flag.
+* Describe footguns around signing private content, and block certain headers to
+  make it less likely.
+* Define a CBOR structure to hold the certificate chain instead of re-using the
+  TLS1.3 message. The TLS 1.3 parser fails on unexpected extensions while this
+  format should ignore them, and apparently TLS implementations don't expose
+  their message parsers enough to allow passing a message to a certificate
+  verifier.
+* Require an X.509 extension for the signing certificate.
 
 draft-02
 

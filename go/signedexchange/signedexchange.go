@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -15,7 +16,8 @@ import (
 
 type Exchange struct {
 	// Request
-	requestUri *url.URL
+	requestUri     *url.URL
+	requestHeaders http.Header
 
 	// Response
 	responseStatus  int
@@ -25,11 +27,12 @@ type Exchange struct {
 	payload []byte
 }
 
-func NewExchange(uri *url.URL, status int, headers http.Header, payload []byte, miRecordSize int) (*Exchange, error) {
+func NewExchange(uri *url.URL, requestHeaders http.Header, status int, responseHeaders http.Header, payload []byte, miRecordSize int) (*Exchange, error) {
 	e := &Exchange{
 		requestUri:      uri,
 		responseStatus:  status,
-		responseHeaders: headers,
+		requestHeaders:  requestHeaders,
+		responseHeaders: responseHeaders,
 	}
 	if err := e.miEncode(payload, miRecordSize); err != nil {
 		return nil, err
@@ -62,6 +65,7 @@ func (e *Exchange) AddSignedHeadersHeader() {
 	for k, _ := range e.responseHeaders {
 		strs = append(strs, fmt.Sprintf(`"%s"`, strings.ToLower(k)))
 	}
+	sort.Strings(strs)
 	s := strings.Join(strs, ", ")
 	e.responseHeaders.Add("signed-headers", s)
 }
@@ -86,8 +90,8 @@ func (e *Exchange) parseSignedHeadersHeader() []string {
 	return ks
 }
 
-func (e *Exchange) encodeRequest(enc *cbor.Encoder) error {
-	mes := []*cbor.MapEntryEncoder{
+func (e *Exchange) encodeRequestCommon(enc *cbor.Encoder) []*cbor.MapEntryEncoder {
+	return []*cbor.MapEntryEncoder{
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 			keyE.EncodeByteString([]byte(":method"))
 			valueE.EncodeByteString([]byte("GET"))
@@ -96,6 +100,22 @@ func (e *Exchange) encodeRequest(enc *cbor.Encoder) error {
 			keyE.EncodeByteString([]byte(":url"))
 			valueE.EncodeByteString([]byte(e.requestUri.String()))
 		}),
+	}
+}
+
+func (e *Exchange) encodeRequest(enc *cbor.Encoder) error {
+	mes := e.encodeRequestCommon(enc)
+	return enc.EncodeMap(mes)
+}
+
+func (e *Exchange) encodeRequestWithHeaders(enc *cbor.Encoder) error {
+	mes := e.encodeRequestCommon(enc)
+	for name, value := range e.requestHeaders {
+		mes = append(mes,
+			cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
+				keyE.EncodeByteString([]byte(strings.ToLower(name)))
+				valueE.EncodeByteString([]byte(value[0]))
+			}))
 	}
 	return enc.EncodeMap(mes)
 }
@@ -148,36 +168,44 @@ func (e *Exchange) encodeExchangeHeaders(enc *cbor.Encoder) error {
 
 // draft-yasskin-http-origin-signed-responses.html#application-http-exchange
 func WriteExchangeFile(w io.Writer, e *Exchange) error {
-	enc := cbor.NewEncoder(w)
-	if err := enc.EncodeArrayHeader(7); err != nil {
-		return err
-	}
-	if err := enc.EncodeTextString("htxg"); err != nil {
-		return err
-	}
-
-	if err := enc.EncodeTextString("request"); err != nil {
+	buf := &bytes.Buffer{}
+	enc := cbor.NewEncoder(buf)
+	if err := enc.EncodeArrayHeader(2); err != nil {
 		return err
 	}
 	// FIXME: This may diverge in future.
-	if err := e.encodeRequest(enc); err != nil {
+	if err := e.encodeRequestWithHeaders(enc); err != nil {
 		return err
 	}
-
 	// FIXME: Support "request payload"
-
-	if err := enc.EncodeTextString("response"); err != nil {
-		return err
-	}
-
 	if err := e.encodeResponseHeaders(enc, false); err != nil {
 		return err
 	}
 
-	if err := enc.EncodeTextString("payload"); err != nil {
+	// 1. The first 3 bytes of the content represents the length of the CBOR
+	// encoded section, encoded in network byte (big-endian) order.
+	cborBytes := buf.Bytes()
+	if _, err := w.Write([]byte{
+		byte(len(cborBytes) >> 16),
+		byte(len(cborBytes) >> 8),
+		byte(len(cborBytes)),
+	}); err != nil {
 		return err
 	}
-	if err := enc.EncodeByteString(e.payload); err != nil {
+
+	// 2. Then, immediately follows a CBOR-encoded array containing 2 elements:
+	// - a map of request header field names to values, encoded as byte strings,
+	//   with ":method", and ":url" pseudo header fields
+	// - a map from response header field names to values, encoded as byte strings,
+	//   with a ":status" pseudo-header field containing the status code (encoded
+	//   as 3 ASCII letter byte string)
+	if _, err := w.Write(cborBytes); err != nil {
+		return err
+	}
+
+	// 3. Then, immediately follows the response body, encoded in MI.
+	// (note that this doesn't have the length 3 bytes like the CBOR section does)
+	if _, err := w.Write(e.payload); err != nil {
 		return err
 	}
 
