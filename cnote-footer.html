@@ -6,6 +6,13 @@
   background-color: #ffcccc;
   font-weight: bold;
 }
+.cnote2 {
+  margin-left: 15px;
+  border-left: 5px solid #666666;
+  padding: 5px;
+  background-color: #fffecc;
+  font-weight: bold;
+}
 </style>
 <script>
 for (let p of document.querySelectorAll('p')) {
@@ -15,6 +22,12 @@ for (let p of document.querySelectorAll('p')) {
   if (m) {
     p.classList.add("cnote");
     p.innerHTML = m[1]; 
+  }
+
+  let m2 = /^CNOTE2 (.*)/.exec(origHTML);
+  if (m2) {
+    p.classList.add("cnote2");
+    p.innerHTML = m2[1]; 
   }
 }
 </script>

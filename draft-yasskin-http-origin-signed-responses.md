@@ -158,6 +158,8 @@ signature vouches for can depend on how the exchange is transferred
 
 CNOTE Chrome ToT currently only implements signed exchange as a response to an HTTP request, and does not support Server Push-ed exchange.
 
+CNOTE2 Chrome ToT and gen-signedexchange still {relies on, generates} on `Signed-Headers` header, but will be updated soon.
+
 The client categorizes each signature as "valid" or "invalid" by validating that
 signature with its certificate or public key and other metadata against the
 exchange's headers and content ({{signature-validity}}). This validity then
@@ -217,10 +219,14 @@ present parameters MUST have the following values:
 : Binary content (Section 4.5 of {{!I-D.ietf-httpbis-header-structure}}) holding
   an Ed25519 public key ({{!RFC8032}}).
 
+CNOTE Chrome ToT parses "ed25519Key", but will not do anything about it.
+
 {:#signature-validityurl} "validityUrl"
 
 : A string (Section 4.2 of {{!I-D.ietf-httpbis-header-structure}}) containing a
   [valid URL string](https://url.spec.whatwg.org/#valid-url-string).
+
+CNOTE Chrome ToT parses "validityUrl", but will not use it outside verifying {#signature-validity}.
 
 "date" and "expires"
 
@@ -547,6 +553,8 @@ CNOTE Chrome ToT currently does not implement OCSP verification.
 CNOTE Chrome ToT currently only implements the "MI" header field.
 
 CNOTE Chrome ToT currently only implements RSA 2048 bit public key verification and requires certUrl to be present.
+
+CNOTE2 Chrome ToT currently still expect `message` to include 64 zeros, but will be updated soon.
 
 Note that the above algorithm can determine that an exchange's headers are
 potentially-valid before the exchange's payload is received. Similarly, if
@@ -1076,79 +1084,18 @@ including request metadata and header fields, optionally a request body,
 response header fields and metadata, a payload body, and optionally trailer
 header fields.
 
-This content type consists of a canonically-serialized ({{canonical-cbor}}) CBOR
-array containing:
+CNOTE Chrome ToT currently implements a different serialization than spec, outlined below.
 
-1. The text string "htxg" to serve as a file signature, followed by
-1. Alternating member names encoded as text strings (Section 2.1 of
-   {{!RFC7049}}) and member values, with each value consisting of a single CBOR
-   item with a type and meaning determined by the member name.
-
-This specification defines the following member names with their associated
-values:
-
-"request"
-
-: A map from request header field names to values, encoded as byte strings
-  ({{!RFC7049}}, section 2.1). The request header fields MUST include two
-  pseudo-header fields (Section 8.1.2.1 of {{!RFC7540}}):
-
-  * `':method'`: The method of the request (Section 4 of {{!RFC7231}}).
-  * `':url'`: The effective request URI of the request (Section 5.5 of
-    {{!RFC7230}}).
-
-"request payload"
-
-: A byte string ({{!RFC7049}}, section 2.1) containing the request payload body
-  (Section 3.3 of {{!RFC7230}}).
-
-CNOTE Chrome ToT currently lacks support for "request payload".
-
-"response"
-
-: A map from response header field names to values, encoded as byte strings
-  ({{!RFC7049}}, section 2.1). The response header fields MUST include one
-  pseudo-header field (Section 8.1.2.1 of {{!RFC7540}}):
-
-  * `':status'`: The response's 3-digit status code (Section 6 of
-    {{!RFC7231}}]).
-
-"payload"
-
-: A byte string ({{!RFC7049}}, section 2.1) containing the response payload body
-  (Section 3.3 of {{!RFC7230}}).
-
-"trailer"
-
-: A map of trailer header field names to values, encoded as byte strings
-  (Section 2.1 of {{!RFC7049}}).
-
-CNOTE Chrome ToT currently lacks support for "trailer".
-
-A parser MAY return incremental information while parsing
-`application/http-exchange+cbor` content.
-
-Members "request", "response", and "payload" MUST be present. If one is missing,
-the parser MUST stop and report an error.
-
-The member names MUST appear in the order:
-
-1. "request"
-1. "request payload"
-1. "response"
-1. "payload"
-1. "trailer"
-
-If a member name is not a text string, appears out of order, or is followed by a
-value not matching its description above, the parser MUST stop and report an
-error.
-
-If the parser encounters an unknown member name, it MUST skip the following item
-and resume parsing at the next member name.
-
-CNOTE Chrome ToT currently emits error on an unknown member name.
+1. The first 3 bytes of the content represents the length of the CBOR encoded section, encoded in network byte (big-endian) order.
+1. Then, immediately follows a CBOR-encoded array containing 2 elements:
+(This is derived from the section 5 of the old spec)
+  * a map of request header field names to values, encoded as byte strings, with ":method", and ":url" pseudo header fields
+  * a map from response header field names to values, encoded as byte strings, with a ":status" pseudo-header field containing the status code (encoded as 3 ASCII letter byte string)
+1. Then, immediately follows the response body, encoded in MI. (note that this doesn't have the length 3 bytes like the CBOR section does)
 
 ### Example ## {#example-application-http-exchange}
+
+CNOTE The below example is obsolete.
 
 An example `application/http-exchange+cbor` file representing a possible
 exchange with <https://example.com/> follows, in the extended diagnostic format
