@@ -114,7 +114,7 @@ GRqzPwjon7ESIVpKLrVuh5qlMhUkOFUeF9wvViWX4qnV5Fvg
 )
 
 const (
-	expectedEncodedHeader = "[map[\":method\":\"GET\" \":url\":\"https://example.com/\"] map[\":status\":\"200\" \"content-encoding\":\"mi-sha256\" \"content-type\":\"text/html; charset=utf-8\" \"mi\":\"mi-sha256=DRyBGPb7CAW2ukzb9sT1S1ialssthiv6QW7Ks-Trg4Y\" \"signature\":\"label; sig=*gCf99FU55aodvZYhZpZbcHdY3YTl+C5djEiHL8Qh0rPp+fO1vQ89iqMO3QKqF2QZWp6+2i/R6JYKrU+foO5okTUh9YvBM3eQXwjHBgPF4WxLvL5FKuSx402n9xo5j7y1ZHe8D1ptAjL/0IR3vR+DP8IJ1ryS4CkOpubOYI/h6N0XzGX/+RdPdDjlZRXv0Q0relZgCBTPYxJAiXfy60D/TVUviBzERC9Ct+QDyIjwxH4yXFPkPLWOaGiZxqrWttDN6CFoEQWDAWgakNVrpnq2YUx7kKjroEFLglf0v4aG2tmuk3EULOyRGnHPoxytGqOaPeXBuyiqVfBwR9tAfWfZJQ; validityUrl=\\\"https://example.com/resource.validity\\\"; integrity=\\\"mi\\\"; certUrl=\\\"https://example.com/cert.msg\\\"; certSha256=*ZC3lTYTDBJQVf1P2V7+fibTqbIsWNR/X7CWNVW+CEEA; date=1517418800; expires=1517422400\" \"signed-headers\":\"\\\"content-encoding\\\", \\\"content-type\\\", \\\"mi\\\"\"]]"
+	expectedEncodedHeader = "[map[\":method\":\"GET\" \":url\":\"https://example.com/\"] map[\":status\":\"200\" \"content-encoding\":\"mi-sha256\" \"content-type\":\"text/html; charset=utf-8\" \"mi\":\"mi-sha256=DRyBGPb7CAW2ukzb9sT1S1ialssthiv6QW7Ks-Trg4Y\" \"signature\":\"label; sig=*eYACJcjTUKhQQCxka7ln8/k2sMSFh6OiiAXsFFureYJkJJm8dgZZDGRcHc7UUdn7d7fi8CbnMJjLLGsRyrM+ekMWx4kuMf93swnyXT4DVTGhagz8Jee1GHdrnIPz9Fm36jHKSVDHITzbrB52TfUwK+3XuVleDWgIpyL2X/xd1rqZC88w9N5pT0PcsOQvhWTUQgUnj+oAPLTff2gljJ0vpgbonnv67SKRUBcCjiCSidtDHfMy3alICt20qHf1kPbLs3W2jUcn4N8BtdEABMcdbtSlvnef/YqL1XNMLnBnysW5SUMBmfMq16DsfmM7/Rfi03CyyKhIffuoojKQn5fICw; validityUrl=\\\"https://example.com/resource.validity\\\"; integrity=\\\"mi\\\"; certUrl=\\\"https://example.com/cert.msg\\\"; certSha256=*ZC3lTYTDBJQVf1P2V7+fibTqbIsWNR/X7CWNVW+CEEA; date=1517418800; expires=1517422400\"]]"
 )
 
 var (
@@ -179,7 +179,6 @@ func TestSignedExchange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.AddSignedHeadersHeader()
 
 	now := time.Date(2018, 1, 31, 17, 13, 20, 0, time.UTC)
 	certs, err := ParseCertificates([]byte(pemCerts))
