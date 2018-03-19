@@ -114,7 +114,7 @@ GRqzPwjon7ESIVpKLrVuh5qlMhUkOFUeF9wvViWX4qnV5Fvg
 )
 
 const (
-	expectedEncodedHeader = "[map[\":method\":\"GET\" \":url\":\"https://example.com/\"] map[\":status\":\"200\" \"content-encoding\":\"mi-sha256\" \"content-type\":\"text/html; charset=utf-8\" \"mi\":\"mi-sha256=DRyBGPb7CAW2ukzb9sT1S1ialssthiv6QW7Ks-Trg4Y\" \"signature\":\"label; sig=*gCf99FU55aodvZYhZpZbcHdY3YTl+C5djEiHL8Qh0rPp+fO1vQ89iqMO3QKqF2QZWp6+2i/R6JYKrU+foO5okTUh9YvBM3eQXwjHBgPF4WxLvL5FKuSx402n9xo5j7y1ZHe8D1ptAjL/0IR3vR+DP8IJ1ryS4CkOpubOYI/h6N0XzGX/+RdPdDjlZRXv0Q0relZgCBTPYxJAiXfy60D/TVUviBzERC9Ct+QDyIjwxH4yXFPkPLWOaGiZxqrWttDN6CFoEQWDAWgakNVrpnq2YUx7kKjroEFLglf0v4aG2tmuk3EULOyRGnHPoxytGqOaPeXBuyiqVfBwR9tAfWfZJQ; validityUrl=\\\"https://example.com/resource.validity\\\"; integrity=\\\"mi\\\"; certUrl=\\\"https://example.com/cert.msg\\\"; certSha256=*ZC3lTYTDBJQVf1P2V7+fibTqbIsWNR/X7CWNVW+CEEA; date=1517418800; expires=1517422400\"]]"
+	expectedEncodedHeader = "[map[\":method\":\"GET\" \":url\":\"https://example.com/\"] map[\":status\":\"200\" \"content-encoding\":\"mi-sha256\" \"content-type\":\"text/html; charset=utf-8\" \"foo\":\"Bar,Baz\" \"mi\":\"mi-sha256=DRyBGPb7CAW2ukzb9sT1S1ialssthiv6QW7Ks-Trg4Y\" \"signature\":\"label; sig=*oCBNT63WD1mqLimlZhQ8ZSsxbM7BYrZ/wgV215EfYmzRrL9h0Z7uJD/tHe96n5ujd7jnNKwz8I3KaZc3JM6qR3Y5RlEe5KnM1TcxF5zpI4FZsAYVAjXlc1uI2yb2Yhpaqn0hOhrkDr3o0qu/1DpGIczaIMK5+M8ixN97uejx0ruunnH6ARpNXXXjAPcLxnFsYwIT9aHCNrSWwAG+Nkd2PH7u+XJ+bMs8IaiX8+pRlzsFB5uEn96SrWCv11AmIdYMRKEDJT96USZiVi73bPte0H7GBQvkgsc050dIvoIOXVqNvdJJ9yFX0GJ+AaodRuPp96bf/VrGlNr2mj/0I9eRXg; validityUrl=\\\"https://example.com/resource.validity\\\"; integrity=\\\"mi\\\"; certUrl=\\\"https://example.com/cert.msg\\\"; certSha256=*ZC3lTYTDBJQVf1P2V7+fibTqbIsWNR/X7CWNVW+CEEA; date=1517418800; expires=1517422400\"]]"
 )
 
 var (
@@ -175,6 +175,11 @@ func TestSignedExchange(t *testing.T) {
 	u, _ := url.Parse("https://example.com/")
 	header := http.Header{}
 	header.Add("Content-Type", "text/html; charset=utf-8")
+
+	// Multiple values for the same header
+	header.Add("Foo", "Bar")
+	header.Add("Foo", "Baz")
+
 	e, err := NewExchange(u, nil, 200, header, []byte(payload), 16)
 	if err != nil {
 		t.Fatal(err)
