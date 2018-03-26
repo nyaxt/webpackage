@@ -14,7 +14,7 @@ import (
 
 	"github.com/ugorji/go/codec"
 
-	. "github.com/WICG/webpackage/go/signedexchange"
+	. "github.com/nyaxt/webpackage/go/signedexchange"
 )
 
 const (
@@ -234,5 +234,18 @@ func TestSignedExchange(t *testing.T) {
 	// Payload part
 	if gotPayload := binExchange[3+cborLength:]; !bytes.Equal(gotPayload, expectedEncodedPayload) {
 		t.Errorf("payload:\ngot %q,\nwant %q", gotPayload, expectedEncodedPayload)
+	}
+}
+
+func TestRequestHeadersTooBig(t *testing.T) {
+	u, _ := url.Parse("https://example.com/")
+	e, err := NewExchange(u, http.Header{"foo": []string{strings.Repeat(".", 1 << 25)}}, 200, http.Header{}, []byte(""), 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	err = WriteExchangeFile(&buf, e)
+	if err == nil {
+		t.Error("expected error")
 	}
 }

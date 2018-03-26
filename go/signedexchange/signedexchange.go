@@ -156,6 +156,9 @@ func WriteExchangeFile(w io.Writer, e *Exchange) error {
 	// 1. The first 3 bytes of the content represents the length of the CBOR
 	// encoded section, encoded in network byte (big-endian) order.
 	cborBytes := buf.Bytes()
+	if len(cborBytes) >= 1 << 24 {
+		return fmt.Errorf("signedexchange: request headers too big: %d bytes", len(cborBytes))
+	}
 	if _, err := w.Write([]byte{
 		byte(len(cborBytes) >> 16),
 		byte(len(cborBytes) >> 8),
