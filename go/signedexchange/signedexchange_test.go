@@ -239,7 +239,7 @@ func TestSignedExchange(t *testing.T) {
 
 func TestRequestHeadersTooBig(t *testing.T) {
 	u, _ := url.Parse("https://example.com/")
-	e, err := NewExchange(u, http.Header{"foo": []string{strings.Repeat(".", 1 << 25)}}, 200, http.Header{}, []byte(""), 16)
+	e, err := NewExchange(u, http.Header{"foo": []string{strings.Repeat(".", 1 << 19)}}, 200, http.Header{}, []byte(""), 16)
 	if err != nil {
 		t.Fatal(err)
 	}
