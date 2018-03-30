@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	. "github.com/WICG/webpackage/go/signedexchange/mice"
+	. "github.com/nyaxt/webpackage/go/signedexchange/mice"
 )
 
 func TestEmpty(t *testing.T) {

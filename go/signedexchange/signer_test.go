@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"testing"
 
-	"github.com/WICG/webpackage/go/signedexchange"
+	"github.com/nyaxt/webpackage/go/signedexchange"
 )
 
 func TestSignVerify_RSA_PSS_SHA256(t *testing.T) {

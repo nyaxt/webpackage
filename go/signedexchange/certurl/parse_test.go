@@ -5,7 +5,7 @@ import (
 
 	"github.com/kylelemons/godebug/pretty"
 
-	. "github.com/WICG/webpackage/go/signedexchange/certurl"
+	. "github.com/nyaxt/webpackage/go/signedexchange/certurl"
 )
 
 func TestParsePEM(t *testing.T) {

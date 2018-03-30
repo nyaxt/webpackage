@@ -9,7 +9,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/WICG/webpackage/go/webpack"
+	"github.com/nyaxt/webpackage/go/webpack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

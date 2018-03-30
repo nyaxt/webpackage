@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/WICG/webpackage/go/webpack/cbor"
+	"github.com/nyaxt/webpackage/go/webpack/cbor"
 )
 
 func ParseCBOR(packageFilename string) (Package, error) {

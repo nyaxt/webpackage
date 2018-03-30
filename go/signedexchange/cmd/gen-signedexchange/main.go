@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WICG/webpackage/go/signedexchange"
+	"github.com/nyaxt/webpackage/go/signedexchange"
 )
 
 type headerArgs []string

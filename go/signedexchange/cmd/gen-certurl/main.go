@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/WICG/webpackage/go/signedexchange/certurl"
+	"github.com/nyaxt/webpackage/go/signedexchange/certurl"
 )
 
 func showUsage(w io.Writer) {

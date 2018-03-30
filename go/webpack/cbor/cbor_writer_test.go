@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/WICG/webpackage/go/webpack/cbor"
+	"github.com/nyaxt/webpackage/go/webpack/cbor"
 	"github.com/stretchr/testify/assert"
 )
 

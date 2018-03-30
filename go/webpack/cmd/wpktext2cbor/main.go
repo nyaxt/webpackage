@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/WICG/webpackage/go/webpack"
+	"github.com/nyaxt/webpackage/go/webpack"
 )
 
 var (
