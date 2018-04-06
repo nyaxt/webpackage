@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+
+	p256k1 "github.com/coin-network/curve"
 )
 
 type SigningAlgorithm interface {
@@ -49,6 +51,25 @@ func (e *ecdsaSigningAlgorithm) Sign(m []byte) ([]byte, error) {
 	return asn1.Marshal(ecdsaSigValue{r, s})
 }
 
+type ecdsaSigningAlgorithmS256 struct {
+	privKey *ecdsa.PrivateKey
+}
+
+func (e *ecdsaSigningAlgorithmS256) Sign(m []byte) ([]byte, error) {
+	type ecdsaSigValue struct {
+		r, s *big.Int
+	}
+
+	hash := crypto.SHA256.New()
+	hash.Write(m)
+	pkey := p256k1.PrivateKey(*e.privKey)
+	s, err := pkey.Sign(hash.Sum(nil))
+	if err != nil {
+		return nil, err
+	}
+	return s.Serialize(), nil
+}
+
 func SigningAlgorithmForPrivateKey(pk crypto.PrivateKey, rand io.Reader) (SigningAlgorithm, error) {
 	switch pk := pk.(type) {
 	case *rsa.PrivateKey:
@@ -61,6 +82,8 @@ func SigningAlgorithmForPrivateKey(pk crypto.PrivateKey, rand io.Reader) (Signin
 		switch name := pk.Curve.Params().Name; name {
 		case elliptic.P256().Params().Name:
 			return &ecdsaSigningAlgorithm{pk, crypto.SHA256, rand}, nil
+		case p256k1.S256().Params().Name:
+			return &ecdsaSigningAlgorithmS256{pk}, nil
 		case elliptic.P384().Params().Name:
 			return &ecdsaSigningAlgorithm{pk, crypto.SHA384, rand}, nil
 		default:

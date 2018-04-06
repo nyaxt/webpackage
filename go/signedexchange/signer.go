@@ -5,7 +5,6 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nyaxt/webpackage/go/signedexchange/cbor"
+	"github.com/nyaxt/webpackage/go/signedexchange/x509"
 )
 
 type Signer struct {

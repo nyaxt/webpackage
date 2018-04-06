@@ -1,0 +1,22 @@
+36,37c36,39
+< 	"golang_org/x/crypto/cryptobyte"
+< 	cryptobyte_asn1 "golang_org/x/crypto/cryptobyte/asn1"
+---
+> 	"golang.org/x/crypto/cryptobyte"
+> 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
+> 
+> 	p256k1 "github.com/coin-network/curve"
+492,495c494,498
+< 	oidNamedCurveP224 = asn1.ObjectIdentifier{1, 3, 132, 0, 33}
+< 	oidNamedCurveP256 = asn1.ObjectIdentifier{1, 2, 840, 10045, 3, 1, 7}
+< 	oidNamedCurveP384 = asn1.ObjectIdentifier{1, 3, 132, 0, 34}
+< 	oidNamedCurveP521 = asn1.ObjectIdentifier{1, 3, 132, 0, 35}
+---
+> 	oidNamedCurveP224   = asn1.ObjectIdentifier{1, 3, 132, 0, 33}
+> 	oidNamedCurveP256   = asn1.ObjectIdentifier{1, 2, 840, 10045, 3, 1, 7}
+> 	oidNamedCurveP256k1 = asn1.ObjectIdentifier{1, 3, 132, 0, 10}
+> 	oidNamedCurveP384   = asn1.ObjectIdentifier{1, 3, 132, 0, 34}
+> 	oidNamedCurveP521   = asn1.ObjectIdentifier{1, 3, 132, 0, 35}
+507a511,512
+> 	case oid.Equal(oidNamedCurveP256k1):
+> 		return p256k1.S256()

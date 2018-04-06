@@ -4,10 +4,10 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rsa"
-	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
+
+	"github.com/nyaxt/webpackage/go/signedexchange/x509"
 )
 
 func ParseCertificates(text []byte) ([]*x509.Certificate, error) {
@@ -46,8 +46,9 @@ func ParsePrivateKey(derKey []byte) (crypto.PrivateKey, error) {
 			return nil, fmt.Errorf("signedexchange: unknown private key type in PKCS#8: %T", typedKey)
 		}
 	}
-	if key, err := x509.ParseECPrivateKey(derKey); err == nil {
-		return key, nil
+	key, err := x509.ParseECPrivateKey(derKey)
+	if err != nil {
+		return nil, fmt.Errorf("signedexchange: couldn't parse private key. %v", err)
 	}
-	return nil, errors.New("signedexchange: couldn't parse private key.")
+	return key, nil
 }
