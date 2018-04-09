@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -25,6 +26,14 @@ type Exchange struct {
 	// Payload
 	payload []byte
 }
+
+var (
+	KeyMethod = []byte(":method")
+	KeyURL    = []byte(":url")
+	KeyStatus = []byte(":status")
+
+	ValueGet = []byte("GET")
+)
 
 func NewExchange(uri *url.URL, requestHeaders http.Header, status int, responseHeaders http.Header, payload []byte, miRecordSize int) (*Exchange, error) {
 	e := &Exchange{
@@ -63,11 +72,11 @@ func (e *Exchange) AddSignatureHeader(s *Signer) error {
 func (e *Exchange) encodeRequestCommon(enc *cbor.Encoder) []*cbor.MapEntryEncoder {
 	return []*cbor.MapEntryEncoder{
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
-			keyE.EncodeByteString([]byte(":method"))
-			valueE.EncodeByteString([]byte("GET"))
+			keyE.EncodeByteString(KeyMethod)
+			valueE.EncodeByteString(ValueGet)
 		}),
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
-			keyE.EncodeByteString([]byte(":url"))
+			keyE.EncodeByteString(KeyURL)
 			valueE.EncodeByteString([]byte(e.requestUri.String()))
 		}),
 	}
@@ -76,6 +85,40 @@ func (e *Exchange) encodeRequestCommon(enc *cbor.Encoder) []*cbor.MapEntryEncode
 func (e *Exchange) encodeRequest(enc *cbor.Encoder) error {
 	mes := e.encodeRequestCommon(enc)
 	return enc.EncodeMap(mes)
+}
+
+func (e *Exchange) decodeRequest(dec *cbor.Decoder) error {
+	nelem, err := dec.DecodeMapHeader()
+	if err != nil {
+		return err
+	}
+
+	for i := uint64(0); i < nelem; i++ {
+		key, err := dec.DecodeByteString()
+		if err != nil {
+			return fmt.Errorf("Failed to decode key bytestring: %s", err)
+		}
+		value, err := dec.DecodeByteString()
+		if err != nil {
+			return fmt.Errorf("Failed to decode value bytestring: %s", err)
+		}
+		// TODO: add key/value str validation?
+
+		if bytes.Equal(key, KeyMethod) {
+			if !bytes.Equal(value, ValueGet) {
+				log.Printf("Request map key %q: Expected %q, got %q", KeyMethod, ValueGet, value)
+			}
+		} else if bytes.Equal(key, KeyURL) {
+			e.requestUri, err = url.Parse(string(value))
+			if err != nil {
+				log.Printf("Failed to parse URI: %q", value)
+			}
+		} else {
+			// TODO: dup chk
+			e.requestHeaders.Add(string(key), string(value))
+		}
+	}
+	return nil
 }
 
 func normalizeHeaderValues(values []string) string {
@@ -111,7 +154,7 @@ func (e *Exchange) encodeRequestWithHeaders(enc *cbor.Encoder) error {
 func (e *Exchange) encodeResponseHeaders(enc *cbor.Encoder) error {
 	mes := []*cbor.MapEntryEncoder{
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
-			keyE.EncodeByteString([]byte(":status"))
+			keyE.EncodeByteString(KeyStatus)
 			valueE.EncodeByteString([]byte(strconv.Itoa(e.responseStatus)))
 		}),
 	}
@@ -123,6 +166,37 @@ func (e *Exchange) encodeResponseHeaders(enc *cbor.Encoder) error {
 			}))
 	}
 	return enc.EncodeMap(mes)
+}
+
+func (e *Exchange) decodeResponseHeaders(dec *cbor.Decoder) error {
+	nelem, err := dec.DecodeMapHeader()
+	if err != nil {
+		return err
+	}
+
+	for i := uint64(0); i < nelem; i++ {
+		key, err := dec.DecodeByteString()
+		if err != nil {
+			return fmt.Errorf("Failed to decode key bytestring: %s", err)
+		}
+		value, err := dec.DecodeByteString()
+		if err != nil {
+			return fmt.Errorf("Failed to decode value bytestring: %s", err)
+		}
+		// TODO: add key/value str validation?
+
+		if bytes.Equal(key, KeyStatus) {
+			// TODO: add value str validation that it only contains [0-9]
+			e.responseStatus, err = strconv.Atoi(string(value))
+			if err != nil {
+				log.Printf("Failed to parse responseStatus: %q", value)
+			}
+		} else {
+			// TODO: dup chk
+			e.responseHeaders.Add(string(key), string(value))
+		}
+	}
+	return nil
 }
 
 // draft-yasskin-http-origin-signed-responses.html#rfc.section.3.4
@@ -186,4 +260,66 @@ func WriteExchangeFile(w io.Writer, e *Exchange) error {
 	// FIXME: Support "trailer"
 
 	return nil
+}
+
+func ReadExchangeFile(r io.Reader) (*Exchange, error) {
+	var encodedCborLength [3]byte
+	if _, err := r.Read(encodedCborLength[:]); err != nil {
+		return nil, fmt.Errorf("Failed to read length header")
+	}
+	cborLength := int(encodedCborLength[0])<<16 |
+		int(encodedCborLength[1])<<8 |
+		int(encodedCborLength[2])
+
+	cborBytes := make([]byte, cborLength)
+	if _, err := r.Read(cborBytes); err != nil {
+		return nil, fmt.Errorf("Failed to read CBOR header binary")
+	}
+
+	buf := bytes.NewBuffer(cborBytes)
+	dec := cbor.NewDecoder(buf)
+	nelem, err := dec.DecodeArrayHeader()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read CBOR header array")
+	}
+	if nelem != 2 {
+		log.Printf("Expected 2 elements in top-level array, but got %d elements", nelem)
+	}
+
+	e := &Exchange{
+		requestHeaders:  http.Header{},
+		responseHeaders: http.Header{},
+	}
+	if err := e.decodeRequest(dec); err != nil {
+		return nil, fmt.Errorf("Failed to decode request map: %v", err)
+	}
+	if err := e.decodeResponseHeaders(dec); err != nil {
+		return nil, fmt.Errorf("Failed to decode response headers map: %v", err)
+	}
+
+	miHeaderValue := e.responseHeaders.Get("mi")
+	var payloadBuf bytes.Buffer
+	if err := mice.Decode(&payloadBuf, r, miHeaderValue); err != nil {
+		return nil, fmt.Errorf("Failed to mice decode payload: %v", err)
+	}
+	e.payload = payloadBuf.Bytes()
+
+	return e, nil
+}
+
+func (e *Exchange) PrettyPrint(w io.Writer) {
+	fmt.Fprintf(w, "request:\n")
+	fmt.Fprintf(w, "  uri: %s\n", e.requestUri.String())
+	fmt.Fprintf(w, "  headers:\n")
+	for k, _ := range e.requestHeaders {
+		fmt.Fprintf(w, "    %s: %s\n", k, e.responseHeaders.Get(k))
+	}
+	fmt.Fprintf(w, "response:\n")
+	fmt.Fprintf(w, "  status: %d\n", e.responseStatus)
+	fmt.Fprintf(w, "  headers:\n")
+	for k, _ := range e.responseHeaders {
+		fmt.Fprintf(w, "    %s: %s\n", k, e.responseHeaders.Get(k))
+	}
+	fmt.Fprintf(w, "payload [%d bytes]:\n", len(e.payload))
+	_, _ = w.Write(e.payload)
 }
