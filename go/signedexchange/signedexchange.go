@@ -28,11 +28,11 @@ type Exchange struct {
 }
 
 var (
-	KeyMethod = []byte(":method")
-	KeyURL    = []byte(":url")
-	KeyStatus = []byte(":status")
+	keyMethod = []byte(":method")
+	keyURL    = []byte(":url")
+	keyStatus = []byte(":status")
 
-	ValueGet = []byte("GET")
+	valueGet = []byte("GET")
 )
 
 func NewExchange(uri *url.URL, requestHeaders http.Header, status int, responseHeaders http.Header, payload []byte, miRecordSize int) (*Exchange, error) {
@@ -72,11 +72,11 @@ func (e *Exchange) AddSignatureHeader(s *Signer) error {
 func (e *Exchange) encodeRequestCommon(enc *cbor.Encoder) []*cbor.MapEntryEncoder {
 	return []*cbor.MapEntryEncoder{
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
-			keyE.EncodeByteString(KeyMethod)
-			valueE.EncodeByteString(ValueGet)
+			keyE.EncodeByteString(keyMethod)
+			valueE.EncodeByteString(valueGet)
 		}),
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
-			keyE.EncodeByteString(KeyURL)
+			keyE.EncodeByteString(keyURL)
 			valueE.EncodeByteString([]byte(e.requestUri.String()))
 		}),
 	}
@@ -96,21 +96,23 @@ func (e *Exchange) decodeRequest(dec *cbor.Decoder) error {
 	for i := uint64(0); i < nelem; i++ {
 		key, err := dec.DecodeByteString()
 		if err != nil {
-			return fmt.Errorf("Failed to decode key bytestring: %s", err)
+			return fmt.Errorf("signedexchange: Failed to decode key bytestring: %s", err)
 		}
 		value, err := dec.DecodeByteString()
 		if err != nil {
-			return fmt.Errorf("Failed to decode value bytestring: %s", err)
+			return fmt.Errorf("signedexchange: Failed to decode value bytestring: %s", err)
 		}
 		// TODO: add key/value str validation?
 
-		if bytes.Equal(key, KeyMethod) {
-			if !bytes.Equal(value, ValueGet) {
-				log.Printf("Request map key %q: Expected %q, got %q", KeyMethod, ValueGet, value)
+		if bytes.Equal(key, keyMethod) {
+			if !bytes.Equal(value, valueGet) {
+				// TODO: Consider alternative to log.Printf to communicate ill-formed signed-exchange
+				log.Printf("Request map key %q: Expected %q, got %q", keyMethod, valueGet, value)
 			}
-		} else if bytes.Equal(key, KeyURL) {
+		} else if bytes.Equal(key, keyURL) {
 			e.requestUri, err = url.Parse(string(value))
 			if err != nil {
+				// TODO: Consider alternative to log.Printf to communicate ill-formed signed-exchange
 				log.Printf("Failed to parse URI: %q", value)
 			}
 		} else {
@@ -154,7 +156,7 @@ func (e *Exchange) encodeRequestWithHeaders(enc *cbor.Encoder) error {
 func (e *Exchange) encodeResponseHeaders(enc *cbor.Encoder) error {
 	mes := []*cbor.MapEntryEncoder{
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
-			keyE.EncodeByteString(KeyStatus)
+			keyE.EncodeByteString(keyStatus)
 			valueE.EncodeByteString([]byte(strconv.Itoa(e.responseStatus)))
 		}),
 	}
@@ -177,15 +179,15 @@ func (e *Exchange) decodeResponseHeaders(dec *cbor.Decoder) error {
 	for i := uint64(0); i < nelem; i++ {
 		key, err := dec.DecodeByteString()
 		if err != nil {
-			return fmt.Errorf("Failed to decode key bytestring: %s", err)
+			return fmt.Errorf("signedexchange: Failed to decode key bytestring: %s", err)
 		}
 		value, err := dec.DecodeByteString()
 		if err != nil {
-			return fmt.Errorf("Failed to decode value bytestring: %s", err)
+			return fmt.Errorf("signedexchange: Failed to decode value bytestring: %s", err)
 		}
 		// TODO: add key/value str validation?
 
-		if bytes.Equal(key, KeyStatus) {
+		if bytes.Equal(key, keyStatus) {
 			// TODO: add value str validation that it only contains [0-9]
 			e.responseStatus, err = strconv.Atoi(string(value))
 			if err != nil {
@@ -265,7 +267,7 @@ func WriteExchangeFile(w io.Writer, e *Exchange) error {
 func ReadExchangeFile(r io.Reader) (*Exchange, error) {
 	var encodedCborLength [3]byte
 	if _, err := r.Read(encodedCborLength[:]); err != nil {
-		return nil, fmt.Errorf("Failed to read length header")
+		return nil, fmt.Errorf("signedexchange: Failed to read length header")
 	}
 	cborLength := int(encodedCborLength[0])<<16 |
 		int(encodedCborLength[1])<<8 |
@@ -273,16 +275,17 @@ func ReadExchangeFile(r io.Reader) (*Exchange, error) {
 
 	cborBytes := make([]byte, cborLength)
 	if _, err := r.Read(cborBytes); err != nil {
-		return nil, fmt.Errorf("Failed to read CBOR header binary")
+		return nil, fmt.Errorf("signedexchange: Failed to read CBOR header binary")
 	}
 
 	buf := bytes.NewBuffer(cborBytes)
 	dec := cbor.NewDecoder(buf)
 	nelem, err := dec.DecodeArrayHeader()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read CBOR header array")
+		return nil, fmt.Errorf("signedexchange: Failed to read CBOR header array")
 	}
 	if nelem != 2 {
+		// TODO: Consider alternative to log.Printf to communicate ill-formed signed-exchange
 		log.Printf("Expected 2 elements in top-level array, but got %d elements", nelem)
 	}
 
@@ -291,16 +294,16 @@ func ReadExchangeFile(r io.Reader) (*Exchange, error) {
 		responseHeaders: http.Header{},
 	}
 	if err := e.decodeRequest(dec); err != nil {
-		return nil, fmt.Errorf("Failed to decode request map: %v", err)
+		return nil, fmt.Errorf("signedexchange: Failed to decode request map: %v", err)
 	}
 	if err := e.decodeResponseHeaders(dec); err != nil {
-		return nil, fmt.Errorf("Failed to decode response headers map: %v", err)
+		return nil, fmt.Errorf("signedexchange: Failed to decode response headers map: %v", err)
 	}
 
 	miHeaderValue := e.responseHeaders.Get("mi")
 	var payloadBuf bytes.Buffer
 	if err := mice.Decode(&payloadBuf, r, miHeaderValue); err != nil {
-		return nil, fmt.Errorf("Failed to mice decode payload: %v", err)
+		return nil, fmt.Errorf("signedexchange: Failed to mice decode payload: %v", err)
 	}
 	e.payload = payloadBuf.Bytes()
 
@@ -308,18 +311,18 @@ func ReadExchangeFile(r io.Reader) (*Exchange, error) {
 }
 
 func (e *Exchange) PrettyPrint(w io.Writer) {
-	fmt.Fprintf(w, "request:\n")
+	fmt.Fprintln(w, "request:")
 	fmt.Fprintf(w, "  uri: %s\n", e.requestUri.String())
-	fmt.Fprintf(w, "  headers:\n")
+	fmt.Fprintln(w, "  headers:")
 	for k, _ := range e.requestHeaders {
 		fmt.Fprintf(w, "    %s: %s\n", k, e.responseHeaders.Get(k))
 	}
-	fmt.Fprintf(w, "response:\n")
+	fmt.Fprintln(w, "response:")
 	fmt.Fprintf(w, "  status: %d\n", e.responseStatus)
-	fmt.Fprintf(w, "  headers:\n")
+	fmt.Fprintln(w, "  headers:")
 	for k, _ := range e.responseHeaders {
 		fmt.Fprintf(w, "    %s: %s\n", k, e.responseHeaders.Get(k))
 	}
 	fmt.Fprintf(w, "payload [%d bytes]:\n", len(e.payload))
-	_, _ = w.Write(e.payload)
+	w.Write(e.payload)
 }

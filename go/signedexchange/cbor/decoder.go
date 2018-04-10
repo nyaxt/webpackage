@@ -15,7 +15,7 @@ func NewDecoder(r io.Reader) *Decoder {
 
 func (d *Decoder) ReadByte() (byte, error) {
 	b := make([]byte, 1)
-	if _, err := d.r.Read(b); err != nil {
+	if _, err := io.ReadFull(d.r, b); err != nil {
 		return 0, err
 	}
 	return b[0], nil
@@ -53,8 +53,8 @@ func (d *Decoder) decodeTypedUInt() (Type, uint64, error) {
 	var follow []byte
 	if nfollow > 0 {
 		follow = make([]byte, nfollow)
-		if _, err := d.r.Read(follow); err != nil {
-			return t, 0, fmt.Errorf("Failed to read %d bytes following the tag byte: %v", nfollow, err)
+		if _, err := io.ReadFull(d.r, follow); err != nil {
+			return t, 0, fmt.Errorf("cbor: Failed to read %d bytes following the tag byte: %v", nfollow, err)
 		}
 		for i := 0; i < nfollow; i++ {
 			n = n<<8 | uint64(follow[i])
@@ -72,7 +72,7 @@ func (d *Decoder) decodeUintOfType(expected Type) (uint64, error) {
 		return 0, err
 	}
 	if t != expected {
-		return 0, fmt.Errorf("Expected type %v, got type %v", expected, t)
+		return 0, fmt.Errorf("cbor: Expected type %v, got type %v", expected, t)
 	}
 	return n, nil
 }
@@ -90,7 +90,7 @@ func (d *Decoder) decodeBytesOfType(expected Type) ([]byte, error) {
 		return nil, err
 	}
 	bs := make([]byte, n)
-	if _, err := d.r.Read(bs); err != nil {
+	if _, err := io.ReadFull(d.r, bs); err != nil {
 		return nil, err
 	}
 	return bs, nil
