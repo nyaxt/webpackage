@@ -70,7 +70,7 @@ func Decode(w io.Writer, r io.Reader, miHeaderValue string) error {
 	readFirstRecord := false
 	for {
 		if readFirstRecord {
-			if _, err := r.Read(proof); err != nil {
+			if _, err := io.ReadFull(r, proof); err != nil {
 				if err == io.EOF {
 					return nil
 				}
@@ -78,8 +78,8 @@ func Decode(w io.Writer, r io.Reader, miHeaderValue string) error {
 			}
 		}
 		readFirstRecord = true
-		n, err := r.Read(record)
-		if err != nil {
+		n, err := io.ReadFull(r, record)
+		if err != nil && err != io.ErrUnexpectedEOF {
 			return fmt.Errorf("Failed to read record: %v", err)
 		}
 		// TODO: verify integrity

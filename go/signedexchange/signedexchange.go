@@ -266,7 +266,7 @@ func WriteExchangeFile(w io.Writer, e *Exchange) error {
 
 func ReadExchangeFile(r io.Reader) (*Exchange, error) {
 	var encodedCborLength [3]byte
-	if _, err := r.Read(encodedCborLength[:]); err != nil {
+	if _, err := io.ReadFull(r, encodedCborLength[:]); err != nil {
 		return nil, fmt.Errorf("signedexchange: Failed to read length header")
 	}
 	cborLength := int(encodedCborLength[0])<<16 |
@@ -274,7 +274,7 @@ func ReadExchangeFile(r io.Reader) (*Exchange, error) {
 		int(encodedCborLength[2])
 
 	cborBytes := make([]byte, cborLength)
-	if _, err := r.Read(cborBytes); err != nil {
+	if _, err := io.ReadFull(r, cborBytes); err != nil {
 		return nil, fmt.Errorf("signedexchange: Failed to read CBOR header binary")
 	}
 
