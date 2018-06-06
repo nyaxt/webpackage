@@ -90,7 +90,6 @@ func run() error {
 	f, err := os.OpenFile(*flagOutput, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open output file %q for writing. err: %v", *flagOutput, err)
-		os.Exit(1)
 	}
 	defer f.Close()
 
@@ -113,11 +112,11 @@ func run() error {
 	if resHeader.Get("content-type") == "" {
 		resHeader.Add("content-type", "text/html; charset=utf-8")
 	}
-	e, err := signedexchange.NewExchange(parsedUrl, reqHeader, *flagResponseStatus, resHeader, payload, *flagMIRecordSize)
+	e, err := signedexchange.NewExchange(parsedUrl, reqHeader, *flagResponseStatus, resHeader, payload)
 	if err != nil {
 		return err
 	}
-	if err := e.MiEncodePayload(miRecordSize); err != nil {
+	if err := e.MiEncodePayload(*flagMIRecordSize); err != nil {
 		return err
 	}
 

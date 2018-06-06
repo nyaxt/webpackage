@@ -12,7 +12,7 @@ import (
 var HeaderMagicBytes = []byte{0x84, 0x48, 0xf0, 0x9f, 0x8c, 0x90, 0xf0, 0x9f, 0x93, 0xa6}
 
 type Input struct {
-	exchanges []*signedexchange.Exchange
+	Exchanges []*signedexchange.Exchange
 }
 
 // staging area for writing index section
@@ -154,7 +154,7 @@ func WriteBundle(w io.Writer, i *Input) error {
 	is := &indexSection{}
 	rs := &responsesSection{}
 
-	for _, e := range i.exchanges {
+	for _, e := range i.Exchanges {
 		if err := addExchange(is, rs, e); err != nil {
 			return err
 		}
