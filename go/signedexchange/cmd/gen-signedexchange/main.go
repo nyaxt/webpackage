@@ -117,6 +117,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if err := e.MiEncodePayload(miRecordSize); err != nil {
+		return err
+	}
 
 	var date time.Time
 	if *flagDate == "" {

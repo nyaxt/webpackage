@@ -24,7 +24,7 @@ type Exchange struct {
 	signatureHeaderValue string
 
 	// Payload
-	payload []byte
+	Payload []byte
 }
 
 var HeaderMagicBytes = []byte("sxg1-b1\x00")
@@ -52,7 +52,7 @@ var (
 	}
 )
 
-func NewExchange(uri *url.URL, requestHeaders http.Header, status int, responseHeaders http.Header, payload []byte, miRecordSize int) (*Exchange, error) {
+func NewExchange(uri *url.URL, requestHeaders http.Header, status int, responseHeaders http.Header, payload []byte) (*Exchange, error) {
 	for h, _ := range statefulRequestHeaders {
 		if _, ok := requestHeaders[h]; ok {
 			return nil, fmt.Errorf("signedexchange: stateful request header %q can't be captured inside signed exchange", h)
@@ -69,20 +69,18 @@ func NewExchange(uri *url.URL, requestHeaders http.Header, status int, responseH
 		responseStatus:  status,
 		requestHeaders:  requestHeaders,
 		responseHeaders: responseHeaders,
-	}
-	if err := e.miEncode(payload, miRecordSize); err != nil {
-		return nil, err
+		Payload:         payload,
 	}
 	return e, nil
 }
 
-func (e *Exchange) miEncode(payload []byte, recordSize int) error {
+func (e *Exchange) MiEncodePayload(recordSize int) error {
 	var buf bytes.Buffer
-	mi, err := mice.Encode(&buf, payload, recordSize)
+	mi, err := mice.Encode(&buf, e.Payload, recordSize)
 	if err != nil {
 		return err
 	}
-	e.payload = buf.Bytes()
+	e.Payload = buf.Bytes()
 	e.responseHeaders.Add("Content-Encoding", "mi-sha256")
 	e.responseHeaders.Add("MI", mi)
 	return nil
@@ -133,7 +131,7 @@ func normalizeHeaderValues(values []string) string {
 	return strings.Join(values, ",")
 }
 
-func (e *Exchange) encodeRequestWithHeaders(enc *cbor.Encoder) error {
+func (e *Exchange) EncodeRequestWithHeaders(enc *cbor.Encoder) error {
 	mes := e.encodeRequestCommon(enc)
 	for name, value := range e.requestHeaders {
 		mes = append(mes,
@@ -160,6 +158,11 @@ func (e *Exchange) encodeResponseHeaders(enc *cbor.Encoder) error {
 			}))
 	}
 	return enc.EncodeMap(mes)
+}
+
+func WriteResponseHeaders(w io.Writer, e *Exchange) error {
+	enc := cbor.NewEncoder(w)
+	return e.encodeResponseHeaders(enc)
 }
 
 // draft-yasskin-http-origin-signed-responses.html#rfc.section.3.4
@@ -222,7 +225,7 @@ func WriteExchangeFile(w io.Writer, e *Exchange) error {
 	}
 
 	// Step 6. "The payload body (Section 3.3 of [RFC7230]) of the exchange represented by the application/signed-exchange resource." [spec text]
-	if _, err := w.Write(e.payload); err != nil {
+	if _, err := w.Write(e.Payload); err != nil {
 		return err
 	}
 
