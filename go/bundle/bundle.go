@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -10,6 +11,8 @@ import (
 )
 
 var HeaderMagicBytes = []byte{0x84, 0x48, 0xf0, 0x9f, 0x8c, 0x90, 0xf0, 0x9f, 0x93, 0xa6}
+
+const FooterLength = 9
 
 type Input struct {
 	Exchanges []*signedexchange.Exchange
@@ -62,9 +65,27 @@ func (is *indexSection) Len() int {
 	return len(is.bytes)
 }
 
+func (is *indexSection) Bytes() []byte {
+	if is.bytes == nil {
+		panic("indexSection must be Finalize()-d before calling Bytes()")
+	}
+	return is.bytes
+}
+
 // staging area for writing responses section
 type responsesSection struct {
 	buf bytes.Buffer
+}
+
+func newResponsesSection(n int) *responsesSection {
+	ret := &responsesSection{}
+
+	enc := cbor.NewEncoder(&ret.buf)
+	if err := enc.EncodeArrayHeader(n); err != nil {
+		panic(err)
+	}
+
+	return ret
 }
 
 func (rs *responsesSection) addExchange(e *signedexchange.Exchange) (int, int, error) {
@@ -90,7 +111,8 @@ func (rs *responsesSection) addExchange(e *signedexchange.Exchange) (int, int, e
 	return offset, length, nil
 }
 
-func (rs *responsesSection) Len() int { return rs.buf.Len() }
+func (rs *responsesSection) Len() int      { return rs.buf.Len() }
+func (rs *responsesSection) Bytes() []byte { return rs.buf.Bytes() }
 
 func addExchange(is *indexSection, rs *responsesSection, e *signedexchange.Exchange) error {
 	offset, length, err := rs.addExchange(e)
@@ -138,12 +160,35 @@ func writeSectionOffsets(w io.Writer, so sectionOffsets) error {
 	}
 
 	var b bytes.Buffer
-	nestedEnc := cbor.Encoder(&b)
+	nestedEnc := cbor.NewEncoder(&b)
 	if err := nestedEnc.EncodeMap(mes); err != nil {
 		return err
 	}
 
-	enc := cbor.Encoder(w)
+	enc := cbor.NewEncoder(w)
+	if err := enc.EncodeByteString(b.Bytes()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeSectionHeader(w io.Writer, numSections int) error {
+	enc := cbor.NewEncoder(w)
+	return enc.EncodeArrayHeader(numSections)
+}
+
+func writeFooter(w io.Writer, offset int) error {
+	bundleSize := uint64(offset) + FooterLength
+
+	var b bytes.Buffer
+	if err := binary.Write(&b, binary.BigEndian, bundleSize); err != nil {
+		return err
+	}
+	if b.Len() != 8 {
+		panic("assert")
+	}
+
+	enc := cbor.NewEncoder(w)
 	if err := enc.EncodeByteString(b.Bytes()); err != nil {
 		return err
 	}
@@ -151,8 +196,10 @@ func writeSectionOffsets(w io.Writer, so sectionOffsets) error {
 }
 
 func WriteBundle(w io.Writer, i *Input) error {
+	cw := NewCountingWriter(w)
+
 	is := &indexSection{}
-	rs := &responsesSection{}
+	rs := newResponsesSection(len(i.Exchanges))
 
 	for _, e := range i.Exchanges {
 		if err := addExchange(is, rs, e); err != nil {
@@ -167,11 +214,24 @@ func WriteBundle(w io.Writer, i *Input) error {
 	so.AddSection("index", is.Len())
 	so.AddSection("responses", rs.Len())
 
-	if _, err := w.Write(HeaderMagicBytes); err != nil {
+	if _, err := cw.Write(HeaderMagicBytes); err != nil {
 		return err
 	}
-	if err := writeSectionOffsets(w, so); err != nil {
+	if err := writeSectionOffsets(cw, so); err != nil {
 		return err
 	}
+	if err := writeSectionHeader(cw, len(so)); err != nil {
+		return err
+	}
+	if _, err := cw.Write(is.Bytes()); err != nil {
+		return err
+	}
+	if _, err := cw.Write(rs.Bytes()); err != nil {
+		return err
+	}
+	if err := writeFooter(cw, int(cw.Written)); err != nil {
+		return err
+	}
+
 	return nil
 }

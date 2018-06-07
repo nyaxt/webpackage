@@ -1,42 +1,111 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+
+	"github.com/mrichman/hargo"
 
 	"github.com/WICG/webpackage/go/bundle"
 	"github.com/WICG/webpackage/go/signedexchange"
 )
 
 var (
-	flagUri    = flag.String("uri", "https://example.com/index.html", "The URI of the resource represented in the exchange")
+	flagInput  = flag.String("i", "in.har", "HTTP Archive (HAR) input file")
 	flagOutput = flag.String("o", "out.webbundle", "Webbundle output file")
 )
 
+func ReadHar(r io.Reader) (*hargo.Har, error) {
+	dec := json.NewDecoder(r)
+	var har hargo.Har
+	if err := dec.Decode(&har); err != nil {
+		return nil, fmt.Errorf("Failed to parse har. err: %v", err)
+	}
+	return &har, nil
+}
+
+func ReadHarFromFile(path string) (*hargo.Har, error) {
+	fi, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to open input file %q for reading. err: %v", path, err)
+	}
+	defer fi.Close()
+	return ReadHar(fi)
+}
+
+func nvpToHeader(nvps []hargo.NVP, bannedHeadersMap map[string]struct{}) (http.Header, error) {
+	h := make(http.Header)
+	for _, nvp := range nvps {
+		canonicalName := strings.ToLower(nvp.Name)
+		if _, banned := bannedHeadersMap[canonicalName]; banned {
+			log.Printf("Dropping banned header: %q", canonicalName)
+			continue
+		}
+		h.Add(canonicalName, nvp.Value)
+	}
+	return h, nil
+}
+
+func contentToPayload(c *hargo.Content) ([]byte, error) {
+	if c.Encoding == "base64" {
+		return base64.StdEncoding.DecodeString(c.Text)
+	}
+	return []byte(c.Text), nil
+}
+
 func run() error {
-	parsedUrl, err := url.Parse(*flagUri)
-	if err != nil {
-		return fmt.Errorf("failed to parse URL %q. err: %v", *flagUri, err)
-	}
-
-	f, err := os.OpenFile(*flagOutput, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open output file %q for writing. err: %v", *flagOutput, err)
-	}
-	defer f.Close()
-
-	se, err := signedexchange.NewExchange(parsedUrl, reqHeader, 200, resHeader, payload)
+	har, err := ReadHarFromFile(*flagInput)
 	if err != nil {
 		return err
 	}
 
-	i := &bundle.Input{
-		Exchanges: []*signedexchange.Exchange{se},
+	fo, err := os.OpenFile(*flagOutput, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("Failed to open output file %q for writing. err: %v", *flagOutput, err)
+	}
+	defer fo.Close()
+
+	es := []*signedexchange.Exchange{}
+
+	for _, e := range har.Log.Entries {
+		log.Printf("Processing entry: %q", e.Request.URL)
+
+		parsedUrl, err := url.Parse(e.Request.URL) // TODO(kouhei): May be this should e.Respose.RedirectURL?
+		if err != nil {
+			return fmt.Errorf("Failed to parse request URL %q. err: %v", e.Request.URL, err)
+		}
+		reqh, err := nvpToHeader(e.Request.Headers, signedexchange.StatefulRequestHeaders)
+		if err != nil {
+			return fmt.Errorf("Failed to parse request header for the request %q. err: %v", e.Request.URL, err)
+		}
+		resh, err := nvpToHeader(e.Response.Headers, signedexchange.StatefulResponseHeaders)
+		if err != nil {
+			return fmt.Errorf("Failed to parse response header for the request %q. err: %v", e.Request.URL, err)
+		}
+		payload, err := contentToPayload(&e.Response.Content)
+		if err != nil {
+			return fmt.Errorf("Failed to extract payload from response content for the request %q. err: %v", e.Request.URL, err)
+		}
+
+		se, err := signedexchange.NewExchange(parsedUrl, reqh, e.Response.Status, resh, payload)
+		if err != nil {
+			return err
+		}
+		es = append(es, se)
 	}
 
-	if err := bundle.WriteBundle(f, i); err != nil {
-		return fmt.Errorf("failed to write exchange. err: %v", err)
+	i := &bundle.Input{Exchanges: es}
+
+	if err := bundle.WriteBundle(fo, i); err != nil {
+		return fmt.Errorf("Failed to write exchange. err: %v", err)
 	}
 	return nil
 }
