@@ -51,10 +51,14 @@ func NewExchange(uri *url.URL, requestHeaders http.Header, status int, responseH
 	}, nil
 }
 
+// RequestURI returns the exchange's request URI.
+// The caller should not modify the returned content.
 func (e *Exchange) RequestURI() *url.URL {
 	return e.requestURI
 }
 
+// Payload returns the slice holding the payload.
+// The caller should not modify the returned content.
 func (e *Exchange) Payload() []byte {
 	return e.payload
 }
