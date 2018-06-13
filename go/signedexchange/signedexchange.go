@@ -16,7 +16,7 @@ import (
 
 type Exchange struct {
 	// Request
-	requestUri     *url.URL
+	requestURI     *url.URL
 	requestHeaders http.Header
 
 	// Response
@@ -43,12 +43,16 @@ func NewExchange(uri *url.URL, requestHeaders http.Header, status int, responseH
 	}
 
 	return &Exchange{
-		requestUri:      uri,
+		requestURI:      uri,
 		responseStatus:  status,
 		requestHeaders:  requestHeaders,
 		responseHeaders: responseHeaders,
 		payload:         payload,
 	}, nil
+}
+
+func (e *Exchange) RequestURI() *url.URL {
+	return e.requestURI
 }
 
 func (e *Exchange) Payload() []byte {
@@ -88,7 +92,7 @@ func (e *Exchange) encodeRequestCommon(enc *cbor.Encoder) []*cbor.MapEntryEncode
 		}),
 		cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 			keyE.EncodeByteString([]byte(":url"))
-			valueE.EncodeByteString([]byte(e.requestUri.String()))
+			valueE.EncodeByteString([]byte(e.requestURI.String()))
 		}),
 	}
 }

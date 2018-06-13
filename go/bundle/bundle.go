@@ -3,8 +3,10 @@ package bundle
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 
 	"github.com/WICG/webpackage/go/signedexchange"
 	"github.com/WICG/webpackage/go/signedexchange/cbor"
@@ -14,7 +16,7 @@ var HeaderMagicBytes = []byte{0x84, 0x48, 0xf0, 0x9f, 0x8c, 0x90, 0xf0, 0x9f, 0x
 
 const FooterLength = 9
 
-type Input struct {
+type Bundle struct {
 	Exchanges []*signedexchange.Exchange
 }
 
@@ -195,7 +197,52 @@ func writeFooter(w io.Writer, offset int) error {
 	return nil
 }
 
-func WriteBundle(w io.Writer, i *Input) error {
+type byterange struct {
+	offset uint64
+	length uint64
+}
+
+type meta struct {
+	sectionOffsets map[string]byterange
+}
+
+func readMeta(bs []byte) (*meta, error) {
+	// 1. Seek to offset 0 in stream. Assert: this operation doesn't fail.
+
+	r := bytes.NewBuffer(bs)
+
+	// 2. If reading 10 bytes from stream returns an error or doesn't return the bytes with hex encoding "84 48 F0 9F 8C 90 F0 9F 93 A6" (the CBOR encoding of the 4-item array initial byte and 8-byte bytestring initial byte, followed by 🌐📦 in UTF-8), return an error.
+	magic := make([]byte, len(HeaderMagicBytes))
+	if _, err := io.ReadFull(r, magic); err != nil {
+		return nil, err
+	}
+	if bytes.Compare(magic, HeaderMagicBytes) != 0 {
+		return nil, errors.New("bundle: Header magic mismatch.")
+	}
+
+	// 3. Let sectionOffsetsLength be the result of getting the length of the CBOR bytestring header from stream (Section 3.4.2). If this is an error, return that error.
+
+	so := make(map[string]byterange)
+
+	return &meta{sectionOffsets: so}, nil
+}
+
+func Read(r io.Reader) (*Bundle, error) {
+	bytes, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	m, err := readMeta(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	b := &Bundle{}
+	return b, nil
+}
+
+func Write(w io.Writer, i *Bundle) error {
 	cw := NewCountingWriter(w)
 
 	is := &indexSection{}
