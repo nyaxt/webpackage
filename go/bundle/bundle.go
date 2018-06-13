@@ -208,6 +208,7 @@ type meta struct {
 	sectionOffsets map[string]byterange
 }
 
+// https://wicg.github.io/webpackage/draft-yasskin-dispatch-bundled-exchanges.html#load-metadata
 func readMeta(bs []byte) (*meta, error) {
 	// 1. Seek to offset 0 in stream. Assert: this operation doesn't fail.
 
@@ -223,8 +224,20 @@ func readMeta(bs []byte) (*meta, error) {
 	}
 
 	// 3. Let sectionOffsetsLength be the result of getting the length of the CBOR bytestring header from stream (Section 3.4.2). If this is an error, return that error.
+	// 4. If sectionOffsetsLength is TBD or greater, return an error.
+	// TODO(kouhei): Not Implemented
+	// 5. Let sectionOffsetsBytes be the result of reading sectionOffsetsLength bytes from stream. If sectionOffsetsBytes is an error, return that error.
+	dec := cbor.NewDecoder(r)
+	sobytes, err := dec.DecodeByteString()
+	if err != nil {
+		return nil, fmt.Errorf("bundle: Failed to read sectionOffset byte string: %v", err)
+	}
 
-	so := make(map[string]byterange)
+	// 6. Let sectionOffsets be the result of parsing one CBOR item (Section 3.4) from sectionOffsetsBytes, matching the section-offsets rule in the CDDL ([I-D.ietf-cbor-cddl]) above. If sectionOffsets is an error, return an error.
+	so, err := decodeSectionOffsetsCBOR(sobytes)
+	if err != nil {
+		return nil, err
+	}
 
 	return &meta{sectionOffsets: so}, nil
 }
