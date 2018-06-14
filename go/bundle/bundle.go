@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 
 	"github.com/WICG/webpackage/go/signedexchange"
 	"github.com/WICG/webpackage/go/signedexchange/cbor"
@@ -130,19 +131,28 @@ func addExchange(is *indexSection, rs *responsesSection, e *signedexchange.Excha
 
 type sectionOffset struct {
 	Name   string
-	Offset int
-	Length int
+	Offset uint64
+	Length uint64
 }
 
 type sectionOffsets []sectionOffset
 
-func (so *sectionOffsets) AddSection(name string, length int) {
-	offset := 0
+func (so *sectionOffsets) AddSectionOrdered(name string, length uint64) {
+	offset := uint64(0)
 	if len(*so) > 0 {
 		last := (*so)[len(*so)-1]
 		offset = last.Offset + last.Length
 	}
 	*so = append(*so, sectionOffset{name, offset, length})
+}
+
+func (so *sectionOffsets) FindSection(name string) (sectionOffset, bool) {
+	for _, e := range *so {
+		if name == e.Name {
+			return e, true
+		}
+	}
+	return sectionOffset{}, false
 }
 
 // https://wicg.github.io/webpackage/draft-yasskin-dispatch-bundled-exchanges.html#load-metadata
@@ -199,22 +209,71 @@ func writeFooter(w io.Writer, offset int) error {
 	return nil
 }
 
-type byterange struct {
-	offset uint64
-	length uint64
+type meta struct {
+	sectionOffsets
+	sectionsStart uint64
 }
 
-type meta struct {
-	sectionOffsets map[string]byterange
+func decodeSectionOffsetsCBOR(bs []byte) (sectionOffsets, error) {
+	// section-offsets = {* tstr => [ offset: uint, length: uint] },
+
+	so := make(sectionOffsets, 0)
+	dec := cbor.NewDecoder(bytes.NewBuffer(bs))
+
+	n, err := dec.DecodeMapHeader()
+	if err != nil {
+		return nil, fmt.Errorf("bundle: Failed to decode sectionOffset map header: %v", err)
+	}
+
+	for i := uint64(0); i < n; i++ {
+		name, err := dec.DecodeTextString()
+		if err != nil {
+			return nil, fmt.Errorf("bundle: Failed to decode sectionOffset map key: %v", err)
+		}
+		if _, exists := so.FindSection(name); exists {
+			return nil, fmt.Errorf("bundle: Duplicated section in sectionOffset map: %q", name)
+		}
+
+		m, err := dec.DecodeArrayHeader()
+		if err != nil {
+			return nil, fmt.Errorf("bundle: Failed to decode sectionOffset map value: %v", err)
+		}
+		if m != 2 {
+			return nil, fmt.Errorf("bundle: Failed to decode sectionOffset map value. Array of invalid length %d", m)
+		}
+
+		offset, err := dec.DecodeUInt()
+		if err != nil {
+			return nil, fmt.Errorf("bundle: Failed to decode sectionOffset[%q].offset: %v", name, err)
+		}
+		length, err := dec.DecodeUInt()
+		if err != nil {
+			return nil, fmt.Errorf("bundle: Failed to decode sectionOffset[%q].length: %v", name, err)
+		}
+
+		so = append(so, sectionOffset{Name: name, Offset: offset, Length: length})
+	}
+
+	return so, nil
+}
+
+// https://wicg.github.io/webpackage/draft-yasskin-dispatch-bundled-exchanges.html#index-section
+func parseIndexSection(sectionContents []byte, sectionsStart uint64, sectionOffsets sectionOffsets, meta *meta) error {
+
+}
+
+var knownSections = map[string]struct{}{
+	"index":     struct{}{},
+	"responses": struct{}{},
 }
 
 // https://wicg.github.io/webpackage/draft-yasskin-dispatch-bundled-exchanges.html#load-metadata
-func readMeta(bs []byte) (*meta, error) {
-	// 1. Seek to offset 0 in stream. Assert: this operation doesn't fail.
+func loadMetadata(bs []byte) (*meta, error) {
+	// Step 1. Seek to offset 0 in stream. Assert: this operation doesn't fail.
 
 	r := bytes.NewBuffer(bs)
 
-	// 2. If reading 10 bytes from stream returns an error or doesn't return the bytes with hex encoding "84 48 F0 9F 8C 90 F0 9F 93 A6" (the CBOR encoding of the 4-item array initial byte and 8-byte bytestring initial byte, followed by 🌐📦 in UTF-8), return an error.
+	// Step 2. If reading 10 bytes from stream returns an error or doesn't return the bytes with hex encoding "84 48 F0 9F 8C 90 F0 9F 93 A6" (the CBOR encoding of the 4-item array initial byte and 8-byte bytestring initial byte, followed by 🌐📦 in UTF-8), return an error.
 	magic := make([]byte, len(HeaderMagicBytes))
 	if _, err := io.ReadFull(r, magic); err != nil {
 		return nil, err
@@ -223,23 +282,80 @@ func readMeta(bs []byte) (*meta, error) {
 		return nil, errors.New("bundle: Header magic mismatch.")
 	}
 
-	// 3. Let sectionOffsetsLength be the result of getting the length of the CBOR bytestring header from stream (Section 3.4.2). If this is an error, return that error.
-	// 4. If sectionOffsetsLength is TBD or greater, return an error.
+	// Step 3. Let sectionOffsetsLength be the result of getting the length of the CBOR bytestring header from stream (Section 3.4.2). If this is an error, return that error.
+	// Step 4. If sectionOffsetsLength is TBD or greater, return an error.
 	// TODO(kouhei): Not Implemented
-	// 5. Let sectionOffsetsBytes be the result of reading sectionOffsetsLength bytes from stream. If sectionOffsetsBytes is an error, return that error.
+	// Step 5. Let sectionOffsetsBytes be the result of reading sectionOffsetsLength bytes from stream. If sectionOffsetsBytes is an error, return that error.
 	dec := cbor.NewDecoder(r)
 	sobytes, err := dec.DecodeByteString()
 	if err != nil {
 		return nil, fmt.Errorf("bundle: Failed to read sectionOffset byte string: %v", err)
 	}
 
-	// 6. Let sectionOffsets be the result of parsing one CBOR item (Section 3.4) from sectionOffsetsBytes, matching the section-offsets rule in the CDDL ([I-D.ietf-cbor-cddl]) above. If sectionOffsets is an error, return an error.
+	// Step 6. Let sectionOffsets be the result of parsing one CBOR item (Section 3.4) from sectionOffsetsBytes, matching the section-offsets rule in the CDDL ([I-D.ietf-cbor-cddl]) above. If sectionOffsets is an error, return an error.
 	so, err := decodeSectionOffsetsCBOR(sobytes)
 	if err != nil {
 		return nil, err
 	}
 
-	return &meta{sectionOffsets: so}, nil
+	// Step 7. Let sectionsStart be the current offset within stream. For example, if sectionOffsetsLength were 52, sectionsStart would be 64.
+	sectionsStart := 12 + uint64(len(sobytes))
+
+	// Step 8. Let knownSections be the subset of the Section 6.2 that this client has implemented.
+	// Step 9. Let ignoredSections be an empty set.
+	// Step 10. For each "name" key in sectionOffsets, if "name"'s specification in knownSections says not to process other sections, add those sections' names to ignoredSections.
+
+	// Step 11. Let metadata be an empty map
+	// Note: We use a struct rather than a map here.
+	meta := &meta{
+		sectionOffsets: so,
+		sectionsStart:  sectionsStart,
+	}
+
+	// Step 12. For each "name"/[offset, length] triple in sectionOffsets:
+	for _, e := range so {
+		// Step 12.1. If "name" isn't in knownSections, continue to the next triple.
+		if _, exists := knownSections[e.Name]; !exists {
+			continue
+		}
+		// Step 12.2. If "name"’s Metadata field is "No", continue to the next triple.
+		// Note: the "responses" section is currently the only section with its Metadata field "No".
+		if e.Name == "responses" {
+			continue
+		}
+		// Step 12.3. If "name" is in ignoredSections, continue to the next triple.
+		// TODO
+
+		// Step 12.4. Seek to offset sectionsStart + offset in stream. If this fails, return an error.
+		offset := sectionsStart + e.Offset
+		if uint64(len(bs)) <= offset {
+			return nil, fmt.Errorf("bundle: section %q's computed offset %q out-of-range.", e.Name, offset)
+		}
+		end := offset + e.Length
+		if uint64(len(bs)) <= end {
+			return nil, fmt.Errorf("bundle: section %q's end %q out-of-range.", e.Name, end)
+		}
+
+		// Step 12.5. Let sectionContents be the result of reading length bytes from stream. If sectionContents is an error, return that error.
+		sectionContents := bs[offset:end]
+
+		// Step 12.6. Follow "name"'s specification from knownSections to process the section, passing sectionContents, stream, sectionOffsets, sectionsStart, and metadata. If this returns an error, return it.
+		switch e.Name {
+		case "index":
+			if err := parseIndexSection(sectionContents, sectionsStart, so, meta); err != nil {
+				return nil, err
+			}
+		case "responses":
+			// FIXME
+		default:
+			panic("aaa")
+		}
+	}
+
+	// Step 13. If metadata doesn't have entries with keys "requests" and "manifest", return an error.
+
+	// Step 14. Return metadata.
+	return meta, nil
 }
 
 func Read(r io.Reader) (*Bundle, error) {
@@ -248,10 +364,12 @@ func Read(r io.Reader) (*Bundle, error) {
 		return nil, err
 	}
 
-	m, err := readMeta(bytes)
+	m, err := loadMetadata(bytes)
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("meta: %+v", m)
 
 	b := &Bundle{}
 	return b, nil
@@ -273,8 +391,8 @@ func (b *Bundle) WriteTo(w io.Writer) (int64, error) {
 	}
 
 	var so sectionOffsets
-	so.AddSection("index", is.Len())
-	so.AddSection("responses", rs.Len())
+	so.AddSectionOrdered("index", uint64(is.Len()))
+	so.AddSectionOrdered("responses", uint64(rs.Len()))
 
 	if _, err := cw.Write(HeaderMagicBytes); err != nil {
 		return cw.Written, err
