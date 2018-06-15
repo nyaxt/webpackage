@@ -14,6 +14,18 @@ import (
 	"github.com/WICG/webpackage/go/signedexchange/mice"
 )
 
+type Request struct {
+	URI     *url.URL
+	Headers http.Header
+}
+
+type Response struct {
+	Status               int
+	Headers              http.Header
+	SignatureHeaderValue string
+	Payload              []byte
+}
+
 type Exchange struct {
 	// Request
 	requestURI     *url.URL

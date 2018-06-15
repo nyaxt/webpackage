@@ -257,9 +257,44 @@ func decodeSectionOffsetsCBOR(bs []byte) (sectionOffsets, error) {
 	return so, nil
 }
 
-// https://wicg.github.io/webpackage/draft-yasskin-dispatch-bundled-exchanges.html#index-section
-func parseIndexSection(sectionContents []byte, sectionsStart uint64, sectionOffsets sectionOffsets, meta *meta) error {
+// https://wicg.github.io/webpackage/draft-yasskin-dispatch-bundled-exchanges.html#cbor-headers
+func decodeHttpRequest(dec *cbor.Decoder) (*signedexchange.Request, error) {
+	r := signedexchange.Request{}
 
+	m, err := dec.DecodeMapHeader()
+	if err != nil {
+		return r, fmt.Errorf("Failed to decode request headers map header: %v", err)
+	}
+	for j := uint64(0); j < m; j++ {
+		namebs, err := dec.DecodeByteString()
+		if err != nil {
+			return r, fmt.Errorf("Failed to decode request headers map header: %v", err)
+		}
+		valuebs, err := dec.DecodeByteString()
+		if err != nil {
+			return r, fmt.Errorf("Failed to decode request headers map header: %v", err)
+		}
+
+	}
+}
+
+// https://wicg.github.io/webpackage/draft-yasskin-dispatch-bundled-exchanges.html#index-section
+// "To parse the index section, given its sectionContents, the sectionsStart offset, the sectionOffsets CBOR item, and the metadata map to fill in, the parser MUST do the following:" [spec text]
+func parseIndexSection(sectionContents []byte, sectionsStart uint64, sectionOffsets sectionOffsets, meta *meta) error {
+	// Step 1. "Let index be the result of parsing sectionContents as a CBOR item matching the index rule in the above CDDL (Section 3.4). If index is an error, return an error." [spec text]
+	dec := cbor.NewDecoder(bytes.NewBuffer(sectionContents))
+	n, err := dec.DecodeMapHeader()
+	if err != nil {
+		return fmt.Errorf("bundle.index: Failed to decode map header: %v", err)
+	}
+
+	// Step 2. "Let requests be an initially-empty map from HTTP requests to structs with items named "offset" and "length"." [spec text]
+
+	// Step 3. "For each cbor-http-request/[offset, length] triple in index:" [spec text]
+	for i := uint64(0); i < n; i++ {
+		// Step 3.1. "Let headers/pseudos be the result of converting cbor-http-request to a header list and pseudoheaders using the algorithm in Section 3.5. If this returns an error, return that error."
+
+	}
 }
 
 var knownSections = map[string]struct{}{
@@ -269,11 +304,11 @@ var knownSections = map[string]struct{}{
 
 // https://wicg.github.io/webpackage/draft-yasskin-dispatch-bundled-exchanges.html#load-metadata
 func loadMetadata(bs []byte) (*meta, error) {
-	// Step 1. Seek to offset 0 in stream. Assert: this operation doesn't fail.
+	// Step 1. "Seek to offset 0 in stream. Assert: this operation doesn't fail." [spec text]
 
 	r := bytes.NewBuffer(bs)
 
-	// Step 2. If reading 10 bytes from stream returns an error or doesn't return the bytes with hex encoding "84 48 F0 9F 8C 90 F0 9F 93 A6" (the CBOR encoding of the 4-item array initial byte and 8-byte bytestring initial byte, followed by 🌐📦 in UTF-8), return an error.
+	// Step 2. "If reading 10 bytes from stream returns an error or doesn't return the bytes with hex encoding "84 48 F0 9F 8C 90 F0 9F 93 A6" (the CBOR encoding of the 4-item array initial byte and 8-byte bytestring initial byte, followed by 🌐📦 in UTF-8), return an error." [spec text]
 	magic := make([]byte, len(HeaderMagicBytes))
 	if _, err := io.ReadFull(r, magic); err != nil {
 		return nil, err
@@ -282,28 +317,29 @@ func loadMetadata(bs []byte) (*meta, error) {
 		return nil, errors.New("bundle: Header magic mismatch.")
 	}
 
-	// Step 3. Let sectionOffsetsLength be the result of getting the length of the CBOR bytestring header from stream (Section 3.4.2). If this is an error, return that error.
-	// Step 4. If sectionOffsetsLength is TBD or greater, return an error.
+	// Step 3. "Let sectionOffsetsLength be the result of getting the length of the CBOR bytestring header from stream (Section 3.4.2). If this is an error, return that error." [spec text]
+	// Step 4. "If sectionOffsetsLength is TBD or greater, return an error." [spec text]
 	// TODO(kouhei): Not Implemented
-	// Step 5. Let sectionOffsetsBytes be the result of reading sectionOffsetsLength bytes from stream. If sectionOffsetsBytes is an error, return that error.
+	// Step 5. "Let sectionOffsetsBytes be the result of reading sectionOffsetsLength bytes from stream. If sectionOffsetsBytes is an error, return that error." [spec text]
 	dec := cbor.NewDecoder(r)
 	sobytes, err := dec.DecodeByteString()
 	if err != nil {
 		return nil, fmt.Errorf("bundle: Failed to read sectionOffset byte string: %v", err)
 	}
 
-	// Step 6. Let sectionOffsets be the result of parsing one CBOR item (Section 3.4) from sectionOffsetsBytes, matching the section-offsets rule in the CDDL ([I-D.ietf-cbor-cddl]) above. If sectionOffsets is an error, return an error.
+	// Step 6. "Let sectionOffsets be the result of parsing one CBOR item (Section 3.4) from sectionOffsetsBytes, matching the section-offsets rule in the CDDL ([I-D.ietf-cbor-cddl]) above. If sectionOffsets is an error, return an error." [spec text]
 	so, err := decodeSectionOffsetsCBOR(sobytes)
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 7. Let sectionsStart be the current offset within stream. For example, if sectionOffsetsLength were 52, sectionsStart would be 64.
+	// Step 7. "Let sectionsStart be the current offset within stream. For example, if sectionOffsetsLength were 52, sectionsStart would be 64." [spec text]
 	sectionsStart := 12 + uint64(len(sobytes))
 
-	// Step 8. Let knownSections be the subset of the Section 6.2 that this client has implemented.
-	// Step 9. Let ignoredSections be an empty set.
-	// Step 10. For each "name" key in sectionOffsets, if "name"'s specification in knownSections says not to process other sections, add those sections' names to ignoredSections.
+	// Step 8. "Let knownSections be the subset of the Section 6.2 that this client has implemented." [spec text]
+	// Step 9. "Let ignoredSections be an empty set." [spec text]
+	// Step 10. "For each "name" key in sectionOffsets, if "name"'s specification in knownSections says not to process other sections, add those sections' names to ignoredSections." [spec text]
+	// Note: Per discussion in #218, the steps 9-10 are not implemented since they are no-ops as of now.
 
 	// Step 11. Let metadata be an empty map
 	// Note: We use a struct rather than a map here.
@@ -324,7 +360,7 @@ func loadMetadata(bs []byte) (*meta, error) {
 			continue
 		}
 		// Step 12.3. If "name" is in ignoredSections, continue to the next triple.
-		// TODO
+		// Note: Per discussion in #218, the step 12.3 is  not implemented since it is no-op as of now.
 
 		// Step 12.4. Seek to offset sectionsStart + offset in stream. If this fails, return an error.
 		offset := sectionsStart + e.Offset
