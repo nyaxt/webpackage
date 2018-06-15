@@ -162,14 +162,16 @@ func (so *sectionOffsets) FindSection(name string) (sectionOffset, bool) {
 // https://wicg.github.io/webpackage/draft-yasskin-dispatch-bundled-exchanges.html#load-metadata
 // Steps 3-7.
 func writeSectionOffsets(w io.Writer, so sectionOffsets) error {
+	sectionHeaderSize := 1 //fixme
+
 	mes := []*cbor.MapEntryEncoder{}
 	for _, e := range so {
 		me := cbor.GenerateMapEntry(func(keyE *cbor.Encoder, valueE *cbor.Encoder) {
 			// TODO(kouhei): error plumbing
 			keyE.EncodeTextString(e.Name)
 			valueE.EncodeArrayHeader(2)
-			valueE.EncodeUInt(uint64(e.Offset))
-			valueE.EncodeUInt(uint64(e.Length))
+			valueE.EncodeUInt(e.Offset + uint64(sectionHeaderSize))
+			valueE.EncodeUInt(e.Length)
 		})
 
 		mes = append(mes, me)
@@ -508,7 +510,7 @@ func loadMetadata(bs []byte) (*meta, error) {
 			continue
 		}
 		// Step 12.3. If "name" is in ignoredSections, continue to the next triple.
-		// Note: Per discussion in #218, the step 12.3 is  not implemented since it is no-op as of now.
+		// Note: Per discussion in #218, the step 12.3 is not implemented since it is no-op as of now.
 
 		// Step 12.4. Seek to offset sectionsStart + offset in stream. If this fails, return an error.
 		offset := sectionsStart + e.Offset
@@ -522,6 +524,7 @@ func loadMetadata(bs []byte) (*meta, error) {
 
 		// Step 12.5. Let sectionContents be the result of reading length bytes from stream. If sectionContents is an error, return that error.
 		sectionContents := bs[offset:end]
+		log.Printf("Section[%q] stream offset %x end %x", e.Name, offset, end)
 
 		// Step 12.6. Follow "name"'s specification from knownSections to process the section, passing sectionContents, stream, sectionOffsets, sectionsStart, and metadata. If this returns an error, return it.
 		switch e.Name {
